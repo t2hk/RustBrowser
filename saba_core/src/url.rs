@@ -1,4 +1,5 @@
 use alloc::string::String;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 /// URL を表す構造体。
@@ -13,7 +14,7 @@ pub struct Url {
 
 impl Url {
     /// URL 構造体のインスタンスを作成するための new　関数。
-    pub fn new(url: String) => Self {
+    pub fn new(url: String) -> Self {
         Self {
             url,
             host: "".to_string(),
@@ -24,7 +25,7 @@ impl Url {
     }
 
     /// URL を解析するメソッド。
-    pub fn parse(&mut self) => Result<Self, String> {
+    pub fn parse(&mut self) -> Result<Self, String> {
         if !self.is_http() {
             return Err("Only HTTP scheme is supported.".to_string());
         }
@@ -52,7 +53,7 @@ impl Url {
             .trim_start_matches("http://")
             .splitn(2, "/")
             .collect();
-        if let some(index) = url_parts[0].find(':') {
+        if let Some(index) = url_parts[0].find(':') {
             url_parts[0][..index].to_string()
         } else {
             url_parts[0].to_string()
@@ -67,7 +68,7 @@ impl Url {
             .splitn(2, "/")
             .collect();
         
-        if let some(index) = url_parts[0].find(':') {
+        if let Some(index) = url_parts[0].find(':') {
             url_parts[0][index + 1..].to_string()
         } else {
             "80".to_string()
@@ -80,7 +81,7 @@ impl Url {
             .url
             .trim_start_matches("http://")
             .splitn(2, "/")
-            .collect()
+            .collect();
 
         if url_parts.len() < 2 {
             return "".to_string()
@@ -97,7 +98,7 @@ impl Url {
             .url
             .trim_start_matches("http://")
             .splitn(2, "/")
-            .collect()
+            .collect();
         if url_parts.len() < 2 {
             return "".to_string()
         }
@@ -127,5 +128,96 @@ impl Url {
     ///　URL　のクエリパラメータを取得する。
     pub fn searchpart(&self) -> String {
         self.searchpart.clone()
-    }        
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    /// ポート番号 80 の URL 構造体のテスト。
+    fn test_url_host() {
+        let url = "http://example.com".to_string();
+        let expected = Ok(Url {
+            url: url.clone(),
+            host: "example.com".to_string(),
+            port: "80".to_string(),
+            path: "".to_string(),
+            searchpart: "".to_string(),
+        });
+        assert_eq!(expected, Url::new(url).parse());
+    }
+
+    #[test]
+    ///　ポート番号 8888 の URL 構造体のテスト。
+    fn test_url_host_port() {
+        let url = "http://example.com:8888".to_string();
+        let expected = Ok(Url {
+            url: url.clone(),
+            host: "example.com".to_string(),
+            port: "8888".to_string(),
+            path: "".to_string(),
+            searchpart: "".to_string(),
+        });
+        assert_eq!(expected, Url::new(url).parse());
+    }
+
+    #[test]
+    /// ポート番号 8888 かつ パスを保持する URL 構造体のテスト。
+    fn test_url_host_port_path() {
+        let url = "http://example.com:8888/index.html".to_string();
+        let expected = Ok(Url {
+            url: url.clone(),
+            host: "example.com".to_string(),
+            port: "8888".to_string(),
+            path: "index.html".to_string(),
+            searchpart: "".to_string(),
+        });
+        assert_eq!(expected, Url::new(url).parse())
+    }
+
+    #[test]
+    /// ポート番号 80 かつパスを保持する URL 構造体のテスト。
+    fn test_url_host_path() {
+        let url = "http://example.com/index.html".to_string();
+        let expected = Ok(Url {
+            url: url.clone(),
+            host: "example.com".to_string(),
+            port: "80".to_string(),
+            path: "index.html".to_string(),
+            searchpart: "".to_string(),
+        });
+        assert_eq!(expected, Url::new(url).parse());
+    }
+
+    #[test]
+    /// ポート8888　かつクエリパラメータを保持する URL 構造体のテスト。
+    fn test_url_host_port_path_searchquery() {
+        let url = "http://example.com:8888/index.html?a=123&b=xyz".to_string();
+        let expected = Ok(Url {
+            url: url.clone(),
+            host: "example.com".to_string(),
+            port: "8888".to_string(),
+            path: "index.html".to_string(),
+            searchpart: "a=123&b=xyz".to_string(),
+        });
+        assert_eq!(expected, Url::new(url).parse());
+    }
+
+    #[test]
+    /// HTTP スキーマのない URL　の場合のエラーテスト。
+    fn test_no_scheme() {
+        let url = "example.com".to_string();
+        let expected = Err("Only HTTP scheme is supported.".to_string());
+        assert_eq!(expected, Url::new(url).parse());
+    }
+
+    #[test]
+    /// 対応していない FTP　スキーマの場合のエラーテスト。
+    fn test_unsupported_schema() {
+        let url = "ftp://example.com:8888/index.html".to_string();
+        let expected = Err("Only HTTP scheme is supported.".to_string());
+        assert_eq!(expected, Url::new(url).parse());
+    }
 }
