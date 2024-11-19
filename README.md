@@ -37,11 +37,38 @@ apt install qemu-system
 URL のスキーマ、ホスト、ポート、パス、クエリパラメータを構造体で表現する。
 文字列 URL をパースして URL 構造体を組み立てる。
 
-テストの実行方法は以下のとおり。
+テストの実行方法は以下の通り。
 ```
 cd saba_core
 cargo test
 ```
 
 # 第３章 HTTP の実装
+HTTP クライアントを作成し、HTTP リクエストの送受信を実装する。
+
+テストの実施方法は以下の通り。
+```
+cd saba_core
+cargo test
+```
+
+wasabiOS 上で動かす方法は以下の通り。
+```
+./run_on_wasabi.sh
+
+# OS が起動したら、"rustbrowser" と入力して Enter を押下する。
+# 以下のように HTML 文字列が表示される。
+
+response:
+HttpResponse {
+    version: "HTTP/1.1",
+    status_code: 200,
+    reason: "OK\r",
+... 省略 ...
+```
+
+テストサーバとやり取りする方法は以下の通り。
+```
+python3 -m http.server 8000
+```
 
