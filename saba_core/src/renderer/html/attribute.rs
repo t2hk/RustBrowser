@@ -3,7 +3,7 @@ use alloc::string::String;
 /// Attribute 構造体
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attribute {
-  name: Stirng,
+  name: String,
   value: String,
 }
 

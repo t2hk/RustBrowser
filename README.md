@@ -72,3 +72,8 @@ HttpResponse {
 python3 -m http.server 8000
 ```
 
+# 第4章 HTML を解析する - HTML の字句解析-
+* HTML などソースコードを1文字ずつ処理して、意味のある最小単位のトークンに分割する。
+* トークンに分割するアルゴリズムは HTML Living Starndard で定められており、ステートマシンで表現されている。
+  https://html.spec.whatwg.org/multipage/parsing.html#tokenization
+
