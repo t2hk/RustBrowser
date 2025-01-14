@@ -39,7 +39,7 @@ impl Url {
     }
 
     /// URL が http:// で開始されているかどうか。
-    pub fn is_http(&mut self) -> bool {
+    pub fn is_http(&self) -> bool {
         if self.url.contains("http://") {
             return true;
         }
@@ -67,7 +67,7 @@ impl Url {
             .trim_start_matches("http://")
             .splitn(2, "/")
             .collect();
-        
+
         if let Some(index) = url_parts[0].find(':') {
             url_parts[0][index + 1..].to_string()
         } else {
@@ -84,11 +84,9 @@ impl Url {
             .collect();
 
         if url_parts.len() < 2 {
-            return "".to_string()
+            return "".to_string();
         }
-        let path_and_searchpart: Vec<&str> = url_parts[1]
-            .splitn(2, "?")
-            .collect();
+        let path_and_searchpart: Vec<&str> = url_parts[1].splitn(2, "?").collect();
         path_and_searchpart[0].to_string()
     }
 
@@ -100,12 +98,10 @@ impl Url {
             .splitn(2, "/")
             .collect();
         if url_parts.len() < 2 {
-            return "".to_string()
+            return "".to_string();
         }
 
-        let path_and_searchpart: Vec<&str> = url_parts[1]
-            .splitn(2, "?")
-            .collect();
+        let path_and_searchpart: Vec<&str> = url_parts[1].splitn(2, "?").collect();
         if path_and_searchpart.len() < 2 {
             "".to_string()
         } else {
