@@ -7,6 +7,7 @@ use crate::renderer::html::attribute::Attribute;
 use crate::renderer::html::token::HtmlToken;
 use crate::renderer::html::token::HtmlTokenizer;
 use alloc::rc::Rc;
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::str::FromStr;
@@ -163,6 +164,66 @@ impl HtmlParser {
             }
         }
         false
+    }
+
+    /// 文字からテキストノードを作成する。
+    fn create_char(&self, c: char) -> Node {
+        let mut s = String::new();
+        s.push(c);
+        Node::new(NodeKind::Text(s))
+    }
+
+    /// 新しい文字ノードを作成して DOM ツリーに追加するか、現在のテキストノードに新しい文字を挿入する。
+    fn insert_char(&mut self, c: char) {
+        // 現在の開ている要素スタックの最後のノードを取得する（現在の参照ノード）。
+        // スタックが空の場合、ルートノードの配下にテキストノードを追加しようとしていることを意味するが
+        // これは適切ではないため何も行わず終了する。
+        let current = match self.stack_of_open_elements.last() {
+            Some(n) => n.clone(),
+            None => return,
+        };
+
+        // 現在の参照ノードがテキストノードの場合、そのノードに文字を追加する。
+        if let NodeKind::Text(ref mut s) = current.borrow_mut().kind {
+            s.push(c);
+            return;
+        }
+
+        // 改行文字や空白文字の場合、テキストノードを追加しない。
+        if c == '\n' || c == ' ' {
+            return;
+        }
+
+        // 現在の参照ノードが文字ノードではない場合、新しいテキストノードを作成する。
+        let node = Rc::new(RefCell::new(self.create_char(c)));
+
+        // 現在の参照ノードにすでに子要素が存在する場合、新しいテキストノードをその直後に挿入する。
+        if current.borrow().first_child().is_some() {
+            current
+                .borrow()
+                .first_child()
+                .unwrap()
+                .borrow_mut()
+                .set_next_sibling(Some(node.clone()));
+            node.borrow_mut().set_previous_sibling(Rc::downgrade(
+                &current
+                    .borrow()
+                    .first_child()
+                    .expect("failed to get a first child"),
+            ));
+        } else {
+            // 現在の参照ノードに兄弟ノードが存在しない場合、新しいテキストノードを現在の参照ノードの最初の子要素として設定する。
+            current.borrow_mut().set_first_child(Some(node.clone()));
+        }
+
+        // 挿入操作の完了後、親子関係と兄弟関係のリンクを適切に設定する。
+        // 現在の参照ノードの最後の子ノードを新しいノードに設定する。
+        current.borrow_mut().set_.last_child(Rc::downgrade(&node));
+        // 新しいノードの親を現在の参照ノードに設定する。
+        node.borrow_mut().set_parent(Rc::downgrade(&current));
+
+        // 新しいノードを開いている要素スタックに追加する。
+        self.stack_of_open_elements.push(node);
     }
 
     /// DOM ツリーを構築する。
