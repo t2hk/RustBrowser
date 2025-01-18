@@ -410,6 +410,22 @@ impl HtmlParser {
                 // 具体的には <div>, <h1>, <p> のようなタグである。
                 InsertionMode::InBody => {
                     match token {
+                        // 次に処理するトークンが開始タグの場合の処理
+                        Some(HtmlToken::StartTag {
+                            ref tag,
+                            self_closing: _,
+                            ref attributes,
+                        }) => match tag.as_str() {
+                            // p タグの開始の場合、Element ノードを作成して DOM ツリーに追加し、次のトークンに進める。
+                            "p" => {
+                                self.insert_element(tag, attributes.to_vec());
+                                token = self.t.next();
+                                continue;
+                            }
+                            _ => {
+                                token = self.t.next();
+                            }
+                        },
                         Some(HtmlToken::EndTag { ref tag }) => {
                             match tag.as_str() {
                                 "body" => {
@@ -429,6 +445,14 @@ impl HtmlParser {
                                     } else {
                                         token = self.t.next();
                                     }
+                                    continue;
+                                }
+                                // 次のトークンが </p> 終了タグの時、pop_until メソッドを使ってスタックから <p> タグまで取り出してトークンを次に進める。
+                                "p" => {
+                                    let element_kind = ElementKind::from_str(tag)
+                                        .expect("failed to convert string to ElementKind");
+                                    token = self.t.next();
+                                    self.pop_until(element_kind);
                                     continue;
                                 }
                                 _ => {
