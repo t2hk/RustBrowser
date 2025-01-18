@@ -428,6 +428,12 @@ impl HtmlParser {
                                 token = self.t.next();
                                 continue;
                             }
+                            // <a> の開始タグの場合、DOM ツリーにノードを追加する。
+                            "a" => {
+                                self.insert_element(tag, attributes.to_vec());
+                                token = self.t.next();
+                                continue;
+                            }
                             _ => {
                                 token = self.t.next();
                             }
@@ -465,6 +471,14 @@ impl HtmlParser {
                                 "h1" | "h2" => {
                                     let element_kind = ElementKind::from_str(tag)
                                         .expect("failed to convert string to ElementKind");
+                                    token = self.t.next();
+                                    self.pop_until(element_kind);
+                                    continue;
+                                }
+                                // 次のトークンが </a> 終了タグの場合、スタックから <a> タグまで取り出し、トークンを次に進める。
+                                "a" => {
+                                    let element_kind = ElementKind::from_str(tag)
+                                        .expect("faild to convert string to ElementKind");
                                     token = self.t.next();
                                     self.pop_until(element_kind);
                                     continue;
