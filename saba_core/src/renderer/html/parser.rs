@@ -218,7 +218,7 @@ impl HtmlParser {
 
         // 挿入操作の完了後、親子関係と兄弟関係のリンクを適切に設定する。
         // 現在の参照ノードの最後の子ノードを新しいノードに設定する。
-        current.borrow_mut().set_.last_child(Rc::downgrade(&node));
+        current.borrow_mut().set_last_child(Rc::downgrade(&node));
         // 新しいノードの親を現在の参照ノードに設定する。
         node.borrow_mut().set_parent(Rc::downgrade(&current));
 
@@ -358,7 +358,7 @@ impl HtmlParser {
                             if tag == "head" {
                                 self.mode = InsertionMode::AfterHead;
                                 token = self.t.next();
-                                self.opo_until(ElementKind::Head);
+                                self.pop_until(ElementKind::Head);
                                 continue;
                             }
                         }
@@ -416,14 +416,14 @@ impl HtmlParser {
                                     self.mode = InsertionMode::AfterBody;
                                     token = self.t.next();
                                     // パースに失敗した場合、トークンを無視する。
-                                    if !self.contain.in_stack(ElementKind::Body) {
+                                    if !self.contain_in_stack(ElementKind::Body) {
                                         continue;
                                     }
                                     self.pop_until(ElementKind::Body);
                                     continue;
                                 }
                                 "html" => {
-                                    if self.pop_current_node(ElementKind::body) {
+                                    if self.pop_current_node(ElementKind::Body) {
                                         self.mode = InsertionMode::AfterBody;
                                         assert!(self.pop_current_node(ElementKind::Html));
                                     } else {
