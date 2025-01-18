@@ -1,4 +1,5 @@
 use crate::renderer::dom::node::Element;
+use crate::renderer::dom::node::ElementKind;
 use crate::renderer::dom::node::Node;
 use crate::renderer::dom::node::NodeKind;
 use crate::renderer::dom::node::Window;
@@ -38,6 +39,9 @@ pub struct HtmlParser {
 
     /// HTML の構文解析中にブラウザが使用するスタックである。スタックはデータ構造の1つであり、最初に追加した要素が最後に取り出される(first-in-last-out)。
     /// https://html.spec.whatwg.org/multipage/parsing.html#the-stack-of-open-elements
+    /// 現在開かれているすべての要素を追跡し、正しいツリー構造を構築するために使用する。
+    /// 具体的には、パース中に開始タグが現れた場合にそのノードをスタックに追加し、終了タグが現れた場合はスタックから削除する。
+    /// ネストされた要素や親子関係を正しく管理できる。
     stack_of_open_elements: Vec<Rc<RefCell<Node>>>,
 
     /// HtmlTokenizer の構造体を格納している。次のトークンは t.next メソッドで取得できる。
@@ -115,6 +119,50 @@ impl HtmlParser {
 
         // 新しいノードを開いている要素スタックに追加する。
         self.stack_of_open_elements.push(node);
+    }
+
+    /// stack_of_open_element から1つのノードを取り出し、そのノードが特定の種類と一致する場合に true を返す。
+    /// 異なるノードの場合 false を返す。
+    pub fn pop_current_node(&mut self, element_kind: ElementKind) -> bool {
+        let current = match self.stack_of_open_elements.last() {
+            Some(n) => n,
+            None => return false,
+        };
+
+        if current.borrow().get_element_kind() == Some(element_kind) {
+            self.stack_of_open_elements.pop();
+            return true;
+        }
+        false
+    }
+
+    /// stack_of_open_elements スタックから特定の種類の要素 (element_kind) が現れるまでノードを取り出し続ける。
+    pub fn pop_until(&mut self, element_kind: ElementKind) {
+        assert!(
+            self.contain_in_stack(element_kind),
+            "stack doesn't have an element {:?}",
+            element_kind,
+        );
+        loop {
+            let current = match self.stack_of_open_elements.pop() {
+                Some(n) => n,
+                None => return,
+            };
+
+            if current.borrow().get_element_kind() == Some(element_kind) {
+                return;
+            }
+        }
+    }
+
+    /// stack_of_elements スタックに存在する全ての要素を確認して、特定の種類の要素が存在する場合に true を返す。
+    pub fn contain_in_stack(&mut self, element_kind: ElementKind) -> bool {
+        for i in 0..self.stack_of_open_elements.len() {
+            if self.stack_of_open_elements[i].borrow().get_element_kind() == Some(element_kind) {
+                return true;
+            }
+        }
+        false
     }
 
     /// DOM ツリーを構築する。
