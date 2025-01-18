@@ -579,3 +579,78 @@ impl HtmlParser {
         self.window.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::alloc::string::ToString;
+
+    #[test]
+    /// 空文字のテスト
+    /// HtmlParser の construct_tree メソッドが作成する Window オブジェクトは DOM ツリーのルートに NodeKind::Document を保持することを確認する。
+    fn test_empty() {
+        let html = "".to_string();
+        let t = HtmlTokenizer::new(html);
+        let window = HtmlParser::new(t).construct_tree();
+        let expected = Rc::new(RefCell::new(Node::new(NodeKind::Document)));
+
+        assert_eq!(expected, window.borrow().document());
+    }
+
+    /// HTML の基本的な構造である <html> <head> <body> タグを含む文字列をテストする。
+    /// まず DOM ツリーのルートノードが NodeKind::Document であることを確認する (テスト1)。
+    /// その子ノードは html の NodeKind::Element であることを確認する (テスト2)。
+    /// さらにその子ノードは head の NodeKind::Element であることを確認する (テスト3)。
+    /// そして head の兄弟ノードは body の NodeKind::Element であることを確認する (テスト4)。
+    #[test]
+    fn test_body() {
+        let html = "<html><head></head><body></body></html>".to_string();
+        let t = HtmlTokenizer::new(html);
+        let window = HtmlParser::new(t).construct_tree();
+        let document = window.borrow().document();
+        // テスト1
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Document))),
+            document
+        );
+
+        // テスト2
+        let html = document
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
+                "html",
+                Vec::new()
+            ))))),
+            html
+        );
+
+        // テスト3
+        let head = html
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of html");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
+                "head",
+                Vec::new()
+            ))))),
+            head
+        );
+
+        // テスト4
+        let body = head
+            .borrow()
+            .next_sibling()
+            .expect("failed to get a next sibling of head");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
+                "body",
+                Vec::new()
+            ))))),
+            body
+        );
+    }
+}

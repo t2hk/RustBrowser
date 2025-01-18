@@ -18,7 +18,7 @@ pub struct HttpResponse {
 /// 文字列が不正な場合、エラーを返す。
 impl HttpResponse {
     pub fn new(raw_response: String) -> Result<Self, Error> {
-        // レスポンス文字列の先頭のスペースをトリムし、キャリッジリターンと改行シーケンス("\n\r")を単一の改行("\n")に書き換える。
+        // レスポンス文字列の先頭のスペースをトリムし、キャリッジリターンと改行シーケンス("\r\n")を単一の改行("\n")に書き換える。
         // これにより、一貫した行末を保証する。
         let preprocessed_response = raw_response.trim_start().replace("\r\n", "\n");
 

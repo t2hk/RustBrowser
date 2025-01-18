@@ -216,3 +216,24 @@ impl FromStr for ElementKind {
         }
     }
 }
+
+/// Node 構造体に PartilaEq トレイトを実装し、Node 構造体の比較を行えるようにする。
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
+/// NodeKind 構造体に PartilaEq トレイトを実装し、NodeKind 構造体の比較を行えるようにする。
+impl PartialEq for NodeKind {
+    fn eq(&self, other: &Self) -> bool {
+        match &self {
+            NodeKind::Document => matches!(other, NodeKind::Document),
+            NodeKind::Element(el) => match &other {
+                NodeKind::Element(e2) => el.kind == e2.kind,
+                _ => false,
+            },
+            NodeKind::Text(_) => matches!(other, NodeKind::Text(_)),
+        }
+    }
+}
