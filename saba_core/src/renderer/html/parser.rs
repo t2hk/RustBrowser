@@ -438,6 +438,7 @@ impl HtmlParser {
                                 token = self.t.next();
                             }
                         },
+                        // 次に処理するトークンが終了タグの場合の処理
                         Some(HtmlToken::EndTag { ref tag }) => {
                             match tag.as_str() {
                                 "body" => {
@@ -488,10 +489,15 @@ impl HtmlParser {
                                 }
                             }
                         }
+                        // InBody 状態で HtmlToken::Char が出てきた場合、テキストノードを DOM ツリーに追加する。
+                        Some(HtmlToken::Char(c)) => {
+                            self.insert_char(c);
+                            token = self.t.next();
+                            continue;
+                        }
                         Some(HtmlToken::Eof) | None => {
                             return self.window.clone();
-                        }
-                        _ => {}
+                        } // _ => {}
                     }
                 }
                 // Text 状態は <style> や <script> タグが開始した後の状態である。
