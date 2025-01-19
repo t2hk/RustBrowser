@@ -584,6 +584,7 @@ impl HtmlParser {
 mod tests {
     use super::*;
     use crate::alloc::string::ToString;
+    use alloc::vec;
 
     #[test]
     /// 空文字のテスト
@@ -651,6 +652,138 @@ mod tests {
                 Vec::new()
             ))))),
             body
+        );
+    }
+
+    #[test]
+    /// <body> タグにテキストが存在する場合のテスト。
+    /// DOM ツリーのルートノードは NodeKind::Document であることを確認する (テスト1)。
+    /// その子ノードは html の NodeKind::Element であることを確認する (テスト2)。
+    fn test_text() {
+        let html = "<html><head></head><body>text</body></html>".to_string();
+        let t = HtmlTokenizer::new(html);
+        let window = HtmlParser::new(t).construct_tree();
+        let document = window.borrow().document();
+
+        // テスト1 DOM ツリーのルートノードが NodeKind::Element であることを確認する。
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Document))),
+            document
+        );
+
+        // テスト2 ルートノードの子ノードは html の NodeKind::Element であることを確認する。
+        let html = document
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
+                "html",
+                Vec::new()
+            ))))),
+            html
+        );
+
+        // テスト3 その子ノードは head の NodeKind::Element であることを確認する。
+        let body = html
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document")
+            .borrow()
+            .next_sibling()
+            .expect("failed to get a next sibling of head");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
+                "body",
+                Vec::new()
+            ))))),
+            body
+        );
+
+        // テスト4 body ノードの子ノードは NodeKind::Text であることを確認する。
+        let text = body
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Text("text".to_string())))),
+            text
+        );
+    }
+
+    #[test]
+    /// <body> タグの中に複数ノードが存在する場合のテスト
+    /// <body> タグのノードを取得して確認する (テスト1)。
+    /// body ノードの最初の子ノードは <p> タグの ElementKind::Element であることを確認する (テスト2)。
+    /// p ノードの最初の子ノードは foo=bar の属性を持ち、<a> タグの NodeKind::Element であることを確認する (テスト3)。
+    /// a ノードの最初の子ノードは NodeKind::Text であることを確認する (テスト4)。
+    fn test_multiple_nodes() {
+        let html = "<html><head></head><body><p><a foo-=bar>text</a></p></body></html>".to_string();
+        let t = HtmlTokenizer::new(html);
+        let window = HtmlParser::new(t).construct_tree();
+        let document = window.borrow().document();
+
+        let body = document
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document")
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document")
+            .borrow()
+            .next_sibling()
+            .expect("failed to get a next sibling of head");
+
+        // テスト1 <body> タグのノードを取得して確認する。
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
+                "body",
+                Vec::new()
+            ))))),
+            body
+        );
+
+        // テスト2 body ノードの最初の子ノードは <p> タグの ElementKind::Element であることを確認する。
+        let p = body
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of body");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
+                "p",
+                Vec::new()
+            ))))),
+            p
+        );
+
+        // テスト3 p ノードの最初の子ノードが foo=bar の属性を持つ <a> タグの NodeKind::Element であることを確認する。
+        let mut attr = Attribute::new();
+        attr.add_char('f', true);
+        attr.add_char('o', true);
+        attr.add_char('o', true);
+        attr.add_char('b', false);
+        attr.add_char('a', false);
+        attr.add_char('r', false);
+        let a = p
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of p");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
+                "a",
+                vec![attr]
+            ))))),
+            a
+        );
+
+        // テスト4 a ノードの最初の子ノードは NodeKind::Text であることを確認する。
+        let text = a
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of a");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Text("text".to_string())))),
+            text
         );
     }
 }
