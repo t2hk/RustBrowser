@@ -5,6 +5,8 @@ use alloc::rc::Weak;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
+use core::fmt::Display;
+use core::fmt::Formatter;
 use core::str::FromStr;
 
 /// ノードの種類を保持する列挙型。
@@ -235,5 +237,24 @@ impl PartialEq for NodeKind {
             },
             NodeKind::Text(_) => matches!(other, NodeKind::Text(_)),
         }
+    }
+}
+
+/// ElementKind 列挙型空文字列に変換するための Display トレイト実装。
+impl Display for ElementKind {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        let s = match self {
+            ElementKind::Html => "html",
+            ElementKind::Head => "head",
+            ElementKind::Style => "style",
+            ElementKind::Script => "script",
+            ElementKind::Body => "body",
+            ElementKind::H1 => "h1",
+            ElementKind::H2 => "h2",
+            ElementKind::P => "p",
+            ElementKind::A => "a",
+        };
+
+        write!(f, "{}", s)
     }
 }
