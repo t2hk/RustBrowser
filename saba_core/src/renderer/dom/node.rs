@@ -174,6 +174,14 @@ impl Element {
     pub fn kind(&self) -> ElementKind {
         self.kind
     }
+
+    /// 要素がデフォルトでブロック要素かインライン要素か決める。
+    pub fn is_block_element(&self) -> bool {
+        match self.kind {
+            ElementKind::Body | ElementKind::H1 | ElementKind::H2 | ElementKind::P => true,
+            _ => false,
+        }
+    }
 }
 
 /// 要素の種類を表す列挙型。
