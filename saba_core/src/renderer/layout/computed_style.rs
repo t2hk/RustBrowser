@@ -1,6 +1,12 @@
 use crate::error::Error;
+use crate::renderer::dom::node::ElementKind;
+use crate::renderer::dom::node::Node;
+use crate::renderer::dom::node::NodeKind;
 use alloc::format;
+use alloc::rc::Rc;
+use alloc::string::String;
 use alloc::string::ToString;
+use core::cell::RefCell;
 
 /// ComputedValue 構造体
 /// CSS のプロパティと値を保持する構造体である。
@@ -13,15 +19,6 @@ pub struct ComputedStyle {
     text_decoration: Option<TextDecoration>,
     height: Option<f64>,
     width: Option<f64>,
-}
-
-/// Color 構造体
-/// CSS の色の値を表す構造体である。
-/// 色は red, blue, black などの名前や、#ff0000, #808080 などのカラーコードの値をフィールドに持つ。
-#[derive(Debug, Clone, PartialEq)]
-pub struct Color {
-    name: Option<String>,
-    code: String,
 }
 
 impl ComputedStyle {
@@ -91,6 +88,15 @@ impl ComputedStyle {
     pub fn width(&self) -> f64 {
         self.width.expect("failed to access CSS property: width")
     }
+}
+
+/// Color 構造体
+/// CSS の色の値を表す構造体である。
+/// 色は red, blue, black などの名前や、#ff0000, #808080 などのカラーコードの値をフィールドに持つ。
+#[derive(Debug, Clone, PartialEq)]
+pub struct Color {
+    name: Option<String>,
+    code: String,
 }
 
 impl Color {
@@ -184,7 +190,102 @@ impl Color {
         }
     }
 
+    /// カラーコードを u32 型で返却する。
     pub fn code_u32(&self) -> u32 {
         u32::from_str_radix(self.code.trim_start_matches('#'), 16).unwrap()
+    }
+}
+
+/// ノードの種類に応じたフォントサイズを返却する。
+impl FontSize {
+    fn default(node: &Rc<RefCell<Node>>) -> Self {
+        match &node.borrow().kind() {
+            NodeKind::Element(element) => match element.kind() {
+                ElementKind::H1 => FontSize::XXLarge,
+                ElementKind::H2 => FontSize::XLarge,
+                _ => FontSize::Medium,
+            },
+            _ => FontSize::Medium,
+        }
+    }
+}
+
+/// FontSize 列挙型
+/// 文字の大きさを表す列挙型である。
+/// 以下の大きさをサポートする。
+/// 通常の文字を表す Medium
+/// <h1> タグのデフォルトの文字の大きさである XXLarge
+/// <h2> タグのデフォルトの文字の大きさである XLarge
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum FontSize {
+    Medium,
+    XLarge,
+    XXLarge,
+}
+
+/// DisplayType 列挙型
+/// CSS の display プロパティに対応する値を表す。
+/// ここでは以下をサポートする。
+/// ブロック要素を表す Block
+/// インライン要素を表す Inline
+/// 非表示にする DisplayNone
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum DisplayType {
+    /// https://www.w3.org/TR/ccs-display-3/#valdef-display-block
+    Block,
+    /// https://www.w3.org/TR/ccs-display-3/#valdef-display-inline
+    Inline,
+    /// https://www.w3.org/TR/ccs-display-3/#valdef-display-none
+    DisplayNone,
+}
+
+impl DisplayType {
+    fn default(node: &Rc<RefCell<Node>>) -> Self {
+        match &node.borrow().kind() {
+            NodeKind::Document => DisplayType::Block,
+            NodeKind::Element(e) => {
+                if e.is_block_element() {
+                    DisplayType::Block
+                } else {
+                    DisplayType::Inline
+                }
+            }
+            NodeKind::Text(_) => DisplayType::Inline,
+        }
+    }
+
+    pub fn from_str(s: &str) -> Result<Self, Error> {
+        match s {
+            "block" => Ok(Self::Block),
+            "inline" => Ok(Self::Inline),
+            "none" => Ok(Self::DisplayNone),
+            _ => Err(Error::UnexpectedInput(format!(
+                "display {:?} is not supported yet",
+                s
+            ))),
+        }
+    }
+}
+
+/// TextDecoration 列挙型
+/// CSS の text-decoration プロパティに対応する値を表す列挙型である。
+/// ここでは以下をサポートする。
+/// テキストの下線を表す Underline
+/// 装飾のない None
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TextDecoration {
+    None,
+    Underline,
+}
+
+impl TextDecoration {
+    fn default(node: &Rc<RefCell<Node>>) -> Self {
+        match &node.borrow().kind() {
+            NodeKind::Element(element) => match element.kind() {
+                ElementKind::A => TextDecoration::Underline,
+                _ => TextDecoration::None,
+            },
+            _ => TextDecoration::None,
+        }
     }
 }
