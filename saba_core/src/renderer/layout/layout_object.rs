@@ -1,12 +1,13 @@
 use crate::renderer::dom::node::Node;
 use crate::renderer::dom::node::NodeKind;
-use crate::renderer::layout::computed_style::computedStyle;
+use crate::renderer::layout::computed_style::ComputedStyle;
 use alloc::rc::Rc;
 use alloc::rc::Weak;
 use core::cell::RefCell;
 
 /// HTML 要素は表示コンテンツの性質に基づいてブロック要素とインライン要素に分類される。
 /// ブロック要素は Block, インライン要素は Inline で表す。
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum LayoutObjectKind {
     Block,
     Inline,
@@ -81,7 +82,7 @@ pub struct LayoutObject {
     node: Rc<RefCell<Node>>,
     first_child: Option<Rc<RefCell<LayoutObject>>>,
     next_sibling: Option<Rc<RefCell<LayoutObject>>>,
-    prevent: Weak<RefCell<LayoutObject>>,
+    parent: Weak<RefCell<LayoutObject>>,
     style: ComputedStyle,
     point: LayoutPoint,
     size: LayoutSize,

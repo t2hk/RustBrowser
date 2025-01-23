@@ -35,7 +35,7 @@ impl ComputedStyle {
     }
 
     pub fn set_background_color(&mut self, color: Color) {
-        self.background_color = Some(Color);
+        self.background_color = Some(color);
     }
 
     pub fn background_color(&self) -> Color {
