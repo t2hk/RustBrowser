@@ -182,6 +182,11 @@ impl Element {
             _ => false,
         }
     }
+
+    /// 要素ノードの属性を取得するためのゲッター。
+    pub fn attributes(&self) -> Vec<Attribute> {
+        self.attributes.clone()
+    }
 }
 
 /// 要素の種類を表す列挙型。
