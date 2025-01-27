@@ -1,12 +1,16 @@
 use crate::alloc::string::ToString;
+use crate::renderer::css::cssom::ComponentValue;
+use crate::renderer::css::cssom::Declaration;
 use crate::renderer::css::cssom::Selector;
 use crate::renderer::css::cssom::StyleSheet;
 use crate::renderer::dom::node::Node;
 use crate::renderer::dom::node::NodeKind;
+use crate::renderer::layout::computed_style::Color;
 use crate::renderer::layout::computed_style::ComputedStyle;
 use crate::renderer::layout::computed_style::DisplayType;
 use alloc::rc::Rc;
 use alloc::rc::Weak;
+use alloc::vec::Vec;
 use core::cell::RefCell;
 
 /// HTML 要素は表示コンテンツの性質に基づいてブロック要素とインライン要素に分類される。
@@ -181,6 +185,95 @@ impl LayoutObject {
                 Selector::UnknownSelector => false,
             },
             _ => false,
+        }
+    }
+
+    /// CSS の宣言リスト (declarations) を引数に取り、各宣言のプロパティをノードに適用する。
+    /// 複数のスタイルシートや同じ要素に複数のスタイルを定義できるが、優先して適用するスタイルを決定する仕組みをカスケードと呼ぶ。
+    /// 本ブラウザでは <style> タグに直接書く内部スタイルシートのみサポートする。
+    /// background-color, color, display プロパティのみ変更できる。
+    pub fn cascading_style(&mut self, declarations: Vec<Declaration>) {
+        for declaration in declarations {
+            match declaration.property.as_str() {
+                "background-color" => {
+                    if let ComponentValue::Ident(value) = &declaration.value {
+                        let color = match Color::from_name(&value) {
+                            Ok(color) => color,
+                            Err(_) => Color::white(),
+                        };
+                        self.style.set_background_color(color);
+                        continue;
+                    }
+
+                    if let ComponentValue::HashToken(color_code) = &declaration.value {
+                        let color = match Color::from_code(&color_code) {
+                            Ok(color) => color,
+                            Err(_) => Color::white(),
+                        };
+                        self.style.set_background_color(color);
+                        continue;
+                    }
+                }
+                "color" => {
+                    if let ComponentValue::Ident(value) = &declaration.value {
+                        let color = match Color::from_name(&value) {
+                            Ok(color) => color,
+                            Err(_) => Color::black(),
+                        };
+                        self.style.set_color(color);
+                    }
+
+                    if let ComponentValue::HashToken(color_code) = &declaration.value {
+                        let color = match Color::from_code(&color_code) {
+                            Ok(color) => color,
+                            Err(_) => Color::black(),
+                        };
+                        self.style.set_color(color);
+                    }
+                }
+                "display" => {
+                    if let ComponentValue::Ident(value) = declaration.value {
+                        let display_type = match DisplayType::from_str(&value) {
+                            Ok(display_type) => display_type,
+                            Err(_) => DisplayType::DisplayNone,
+                        };
+                        self.style.set_display(display_type)
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// ノードに対して CSS の値が明示的に指定されていない場合、指定値を使用する。
+    /// 指定値は、仕様書で定められている初期値、親要素の値の継承、CSS の inherit キーワードなどによる明示的な継承の設定により決定される。
+    /// 1. CSS により明示的にプロパティに値を指定した場合はその値が使用される。
+    /// 2. CSS により明示的な値の指定がない場合、可能であれば親要素から値を継承する。
+    /// 3. 1と2のいずれも利用できない場合、要素の初期値が使用される。
+    pub fn defaulting_style(
+        &mut self,
+        node: &Rc<RefCell<Node>>,
+        parent_style: Option<ComputedStyle>,
+    ) {
+        self.style.defaulting(node, parent_style);
+    }
+
+    /// ブロック・インライン要素の最終決定
+    /// カスケード、デフォルティングを経て CSS の値が最終的に決定した後、改めて LayoutObject のノードがブロック要素になるかインライン要素になるか決定する。
+    pub fn update_kind(&mut self) {
+        match self.node_kind() {
+            NodeKind::Document => panic!("should not create a layout object for a Document node"),
+            NodeKind::Element(_) => {
+                let display = self.style.display();
+                match display {
+                    DisplayType::Block => self.kind = LayoutObjectKind::Block,
+                    DisplayType::Inline => self.kind = LayoutObjectKind::Inline,
+                    DisplayType::DisplayNone => {
+                        panic!("should not create a layout object for display:none")
+                    }
+                }
+            }
+            NodeKind::Text(_) => self.kind = LayoutObjectKind::Text,
         }
     }
 }
