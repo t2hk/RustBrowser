@@ -44,7 +44,7 @@ impl ComputedStyle {
             .expect("failed to access CSS property: background_color")
     }
 
-    pub fn set_color(&self, color: Color) {
+    pub fn set_color(&mut self, color: Color) {
         self.color = Some(color);
     }
 

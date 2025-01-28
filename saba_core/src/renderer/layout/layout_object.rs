@@ -1,4 +1,7 @@
 use crate::alloc::string::ToString;
+use crate::constants::CHAR_HEIGHT_WITH_PADDING;
+use crate::constants::CHAR_WIDTH;
+use crate::constants::CONTENT_AREA_WIDTH;
 use crate::renderer::css::cssom::ComponentValue;
 use crate::renderer::css::cssom::Declaration;
 use crate::renderer::css::cssom::Selector;
@@ -8,6 +11,7 @@ use crate::renderer::dom::node::NodeKind;
 use crate::renderer::layout::computed_style::Color;
 use crate::renderer::layout::computed_style::ComputedStyle;
 use crate::renderer::layout::computed_style::DisplayType;
+use crate::renderer::layout::computed_style::FontSize;
 use alloc::rc::Rc;
 use alloc::rc::Weak;
 use alloc::vec::Vec;
@@ -43,11 +47,11 @@ impl LayoutPoint {
         self.y
     }
 
-    pub fn set_x(&self, x: i64) {
+    pub fn set_x(&mut self, x: i64) {
         self.x = x;
     }
 
-    pub fn set_y(&self, y: i64) {
+    pub fn set_y(&mut self, y: i64) {
         self.y = y;
     }
 }
@@ -275,6 +279,137 @@ impl LayoutObject {
             }
             NodeKind::Text(_) => self.kind = LayoutObjectKind::Text,
         }
+    }
+
+    /// 1つのノードのサイズを計算する。
+    /// ノードがブロック要素の場合、親ノードの横幅がそのまま自身の横幅になる。
+    /// ノードがインライン要素の場合、高さも横幅も子要素のサイズを足し合わせたものとなる。
+    /// ノードがテキストの場合、まずはフォントのサイズによって文字の大きさの比率を決定する。
+    pub fn compute_size(&mut self, parent_size: LayoutSize) {
+        let mut size = LayoutSize::new(0, 0);
+
+        match self.kind() {
+            LayoutObjectKind::Block => {
+                size.set_width(parent_size.width());
+
+                let mut height = 0;
+                let mut child = self.first_child();
+                let mut previous_child_kind = LayoutObjectKind::Block;
+                while child.is_some() {
+                    let c = match child {
+                        Some(c) => c,
+                        None => panic!("first child should exist"),
+                    };
+
+                    if previous_child_kind == LayoutObjectKind::Block
+                        || c.borrow().kind() == LayoutObjectKind::Block
+                    {
+                        height += c.borrow().size.height();
+                    }
+
+                    previous_child_kind = c.borrow().kind();
+                    child = c.borrow().next_sibling();
+                }
+                size.set_height(height);
+            }
+            // ノードがインライン要素の場合、高さも横幅も子要素のサイズを足し合わせたものとする。
+            // 本実装では、インライン要素の子ノードは常にテキストノードである。
+            LayoutObjectKind::Inline => {
+                // 全ての子ノードの高さと横幅を足し合わせた結果が現在のノードの高さと横幅になる。
+                let mut width = 0;
+                let mut height = 0;
+                let mut child = self.first_child();
+                while child.is_some() {
+                    let c = match child {
+                        Some(c) => c,
+                        None => panic!("first child should exist"),
+                    };
+
+                    width += c.borrow().size.width();
+                    height += c.borrow().size.height();
+                    child = c.borrow().next_sibling();
+                }
+                size.set_width(width);
+                size.set_height(height);
+            }
+            // ノードがテキストの倍、フォントのサイズによって文字の大きさの比率を決定する。
+            LayoutObjectKind::Text => {
+                if let NodeKind::Text(t) = self.node_kind() {
+                    // フォントサイズによって文字の大きさの比率を決定する。
+                    let ratio = match self.style.font_size() {
+                        FontSize::Medium => 1,
+                        FontSize::XLarge => 2,
+                        FontSize::XXLarge => 3,
+                    };
+                    // 文字の幅、比率、文字列の長さからテキスト要素の幅を計算する。
+                    let width = CHAR_WIDTH * ratio * t.len() as i64;
+                    // もし文字列の長さが描画可能なエリアの横幅より長い場合、テキストを複数行に折り返す。
+                    if width > CONTENT_AREA_WIDTH {
+                        // テキストが複数行の場合
+                        size.set_width(CONTENT_AREA_WIDTH);
+                        // 文字列の長さを描画可能なエリアの横幅で割った結果の数値が行数になる。
+                        let line_num = if width.wrapping_rem(CONTENT_AREA_WIDTH) == 0 {
+                            width.wrapping_div(CONTENT_AREA_WIDTH)
+                        } else {
+                            // 割り切れない場合、最後の行が中途半端な位置で終わることになるため、1行追加する。
+                            width.wrapping_div(CONTENT_AREA_WIDTH) + 1
+                        };
+                        size.set_height(CHAR_HEIGHT_WITH_PADDING * ratio * line_num);
+                    }
+                    // テキストが 1行に収まる場合
+                    else {
+                        size.set_width(width);
+                        size.set_height(CHAR_HEIGHT_WITH_PADDING * ratio);
+                    }
+                }
+            }
+        }
+        self.size = size;
+    }
+
+    /// 1つのノードの位置を計算する。
+    /// ノードの位置は、現在のノードと親ノードの一、隣り合わせの兄弟ノードによって決定する。
+    pub fn compute_position(
+        &mut self,
+        parent_point: LayoutPoint,
+        previous_sibling_kind: LayoutObjectKind,
+        previous_sibling_point: Option<LayoutPoint>,
+        previous_sibling_size: Option<LayoutSize>,
+    ) {
+        let mut point = LayoutPoint::new(0, 0);
+
+        match (self.kind(), previous_sibling_kind) {
+            // 自分自身がブロック要素、または、兄弟ノードがブロック要素の場合、このノードは新しい行から描画されることになるため、ウィンドウの下方向 (Y 軸方向) に向かって位置を調整する。
+            (LayoutObjectKind::Block, _) | (_, LayoutObjectKind::Block) => {
+                if let (Some(size), Some(pos)) = (previous_sibling_size, previous_sibling_point) {
+                    // 兄弟ノードが存在する場合、兄弟ノードの Y 位置と高さを足し合わせたものが次の位置になる。
+                    point.set_y(pos.y() + size.height());
+                } else {
+                    // 兄弟ノードが存在しない場合、親ノードの Y 座標をセットする。
+                    point.set_y(parent_point.x());
+                }
+                // 新しい行から始まるため、X 座標は常に親要素の X 座標と同じである。
+                point.set_x(parent_point.x());
+            }
+            // もし自分自身と兄弟ノードがインライン要素の場合、同じ行に続いて配置されるため、ウィンドウの右方向に向かって位置を調整する。
+            (LayoutObjectKind::Inline, LayoutObjectKind::Inline) => {
+                // 兄弟ノードが存在する場合
+                if let (Some(size), Some(pos)) = (previous_sibling_size, previous_sibling_point) {
+                    point.set_x(pos.x() + size.width()); // 兄弟ノードの X 位置と横幅を足し合わせたものが次の位置になる。
+                    point.set_y(pos.y()); // インライン要素は兄弟ノードと同じ行に並ぶため、兄弟ノードの Y 位置が自分の Y 位置になる。
+                } else {
+                    // 兄弟ノードが存在しない場合、親ノードの X と Y 位置をセットする。
+                    point.set_x(parent_point.x());
+                    point.set_y(parent_point.y());
+                }
+            }
+            _ => {
+                // ブロック要素やインライン要素ではない場合（テキストノードの場合）、親ノードの位置と同じ位置に描画する。
+                point.set_x(parent_point.x());
+                point.set_y(parent_point.y());
+            }
+        }
+        self.point = point;
     }
 }
 

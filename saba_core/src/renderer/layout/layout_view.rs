@@ -38,15 +38,84 @@ impl LayoutView {
     /// レイアウトツリーのノードをどこに描画するかを決定するため、位置とサイズを計算する必要がある。
     /// 本メソッドは構築し終えたレイアウトツリーに対して、各ノードのサイズと位置を計算する。    
     fn update_layout(&mut self) {
-        Self::calcurate_node_size(&self.root, LayoutSize::new(CONTENT_AREA_WIDTH, 0));
+        Self::calculate_node_size(&self.root, LayoutSize::new(CONTENT_AREA_WIDTH, 0));
 
-        Self::calcurate_node_position(
+        Self::calculate_node_position(
             &self.root,
             LayoutPoint::new(0, 0),
             LayoutObjectKind::Block,
             None,
             None,
         )
+    }
+
+    /// サイズの計算
+    /// レイアウトツリーの各ノードのサイズを再帰的に計算する。
+    /// 第1引数: ターゲットのノード
+    /// 第2引数: 親ノードのサイズ
+    fn calculate_node_size(node: &Option<Rc<RefCell<LayoutObject>>>, parent_size: LayoutSize) {
+        if let Some(n) = node {
+            // ノードがブロック要素の場合、子ノードのレイアウトを計算する前に横幅を決める。
+            if n.borrow().kind() == LayoutObjectKind::Block {
+                n.borrow_mut().compute_size(parent_size);
+            }
+
+            let first_child = n.borrow().first_child();
+            Self::calculate_node_size(&first_child, n.borrow().size());
+
+            let next_sibling = n.borrow().next_sibling();
+            Self::calculate_node_size(&next_sibling, parent_size);
+
+            // 子ノードのサイズが決まった後にサイズを計算する。
+            // ブロック要素の時、高さは子ノードの高さに依存する。
+            // インライン要素の時、高さも横幅も子ノードに依存する。
+            n.borrow_mut().compute_size(parent_size);
+        }
+    }
+
+    /// 位置の計算
+    /// レイアウトツリーのノードの位置を再帰的に計算する。
+    /// 第1引数: 計算ターゲットのノード
+    /// 第2引数: 親ノードの位置
+    /// 第3引数: 自分より前の兄弟ノードの種類
+    /// 第4引数: 自分より前の兄弟ノードの①
+    /// 第5引数: 自分より前の兄弟ノードのサイズ
+    fn calculate_node_position(
+        node: &Option<Rc<RefCell<LayoutObject>>>,
+        parent_point: LayoutPoint,
+        previous_sibling_kind: LayoutObjectKind,
+        previous_sibling_point: Option<LayoutPoint>,
+        previous_sibling_size: Option<LayoutSize>,
+    ) {
+        if let Some(n) = node {
+            // 現在のノードの位置を計算する。
+            n.borrow_mut().compute_position(
+                parent_point,
+                previous_sibling_kind,
+                previous_sibling_point,
+                previous_sibling_size,
+            );
+
+            // ノードの子ノードの位置を計算する。
+            let first_child = n.borrow().first_child();
+            Self::calculate_node_position(
+                &first_child,
+                n.borrow().point(),
+                LayoutObjectKind::Block,
+                None, // 子ノードには自分より前の兄弟ノードが存在しないため、None を渡す。
+                None, // 子ノードには自分より前の兄弟ノードが存在しないため、None を渡す。
+            );
+
+            // ノードの兄弟ノードの位置を計算する。
+            let next_sibling = n.borrow().next_sibling();
+            Self::calculate_node_position(
+                &next_sibling,
+                parent_point,
+                n.borrow().kind(),
+                Some(n.borrow().point()),
+                Some(n.borrow().size()),
+            );
+        }
     }
 }
 
