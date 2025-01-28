@@ -455,3 +455,11 @@ pub fn create_layout_object(
     }
     None
 }
+
+/// LayoutObject 構造体の PartialEq トレイトの実装
+impl PartialEq for LayoutObject {
+    /// LayoutObject 構造体の比較
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}

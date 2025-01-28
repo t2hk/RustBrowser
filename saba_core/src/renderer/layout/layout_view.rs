@@ -207,3 +207,58 @@ fn build_layout_tree(
 
     layout_object
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::alloc::string::ToString;
+    use crate::renderer::css::cssom::CssParser;
+    use crate::renderer::css::token::CssTokenizer;
+    use crate::renderer::dom::api::get_style_content;
+    use crate::renderer::dom::node::Element;
+    use crate::renderer::dom::node::NodeKind;
+    use crate::renderer::html::parser::HtmlParser;
+    use crate::renderer::html::token::HtmlTokenizer;
+    use alloc::string::String;
+    use alloc::vec::Vec;
+
+    /// 引数の HTML 文字列からレイアウトツリーを作成する関数。
+    fn create_layout_view(html: String) -> LayoutView {
+        let t = HtmlTokenizer::new(html);
+        let window = HtmlParser::new(t).construct_tree();
+        let dom = window.borrow().document();
+        let style = get_style_content(dom.clone());
+        let css_tokenizer = CssTokenizer::new(style);
+        let cssom = CssParser::new(css_tokenizer).parse_stylesheet();
+        LayoutView::new(dom, &cssom)
+    }
+
+    /// 空文字のテスト
+    #[test]
+    fn test_empty() {
+        let layout_view = create_layout_view("".to_string());
+        assert_eq!(None, layout_view.root());
+    }
+
+    /// <body> タグのみのテスト
+    /// LayoutView 構造体の root ノードは LayoutObjectKind::Block であり、かつ、body の NodeKind::Element であることを確認する。
+    #[test]
+    fn test_body() {
+        let html = "<html><head></head><body></body></html>".to_string();
+        let layout_view = create_layout_view(html);
+
+        let root = layout_view.root();
+        assert!(root.is_some());
+        assert_eq!(
+            LayoutObjectKind::Block,
+            root.clone().expect("root should exist").borrow().kind()
+        );
+        assert_eq!(
+            NodeKind::Element(Element::new("body", Vec::new())),
+            root.clone()
+                .expect("root should exist")
+                .borrow()
+                .node_kind()
+        );
+    }
+}
