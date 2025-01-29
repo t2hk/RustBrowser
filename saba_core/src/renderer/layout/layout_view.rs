@@ -261,4 +261,117 @@ mod tests {
                 .node_kind()
         );
     }
+
+    /// テキスト要素のテスト
+    /// <body> タグにテキストを持つ HTML のテスト。
+    /// LayoutView 構造体の root ノードは LayoutObjectKind::Block であり、かつ、
+    /// body の NodeKind::Element であることを確認する。
+    /// root ノードの子ノードは LayoutObjectKind::Text であり、かつ NodeKind::Text であることを確認する。
+    #[test]
+    fn test_text() {
+        let html = "<html<head></head><body>text</body></html>".to_string();
+        let layout_view = create_layout_view(html);
+
+        let root = layout_view.root();
+        assert!(root.is_some());
+        assert_eq!(
+            LayoutObjectKind::Block,
+            root.clone().expect("root should exist").borrow().kind()
+        );
+        assert_eq!(
+            NodeKind::Element(Element::new("body", Vec::new())),
+            root.clone()
+                .expect("root should exist")
+                .borrow()
+                .node_kind()
+        );
+
+        let text = root.expect("root should exist").borrow().first_child();
+        assert!(text.is_some());
+        assert_eq!(
+            LayoutObjectKind::Text,
+            text.clone()
+                .expect("text node should exist")
+                .borrow()
+                .kind()
+        );
+        assert_eq!(
+            NodeKind::Text("text".to_string()),
+            text.clone()
+                .expect("text node should exist")
+                .borrow()
+                .node_kind()
+        );
+    }
+
+    /// body が display:none のテスト
+    /// CSS によって <body> タグに対して {display: none;} が指定されている場合のテスト。
+    /// レイアウトツリーは、描画されない要素をノードとして持たないため、root ノードは None となる。
+    #[test]
+    fn test_display_none() {
+        let html = "<html><head><style>body{display:none;}</style></head><body>text</body></html>"
+            .to_string();
+        let layout_view = create_layout_view(html);
+        assert_eq!(None, layout_view.root());
+    }
+
+    /// 複数の要素が hidden:none のテスト
+    /// .hidden クラスに対して {display: none;} が指定されている場合のテストである。
+    /// <body> タグに3つの子要素が存在するが、レイアウトツリーに存在するのはそのうち1つのみである。
+    #[test]
+    fn test_hidden_class() {
+        let html = r#"<html>
+      <head>
+        <style>
+          .hidden {
+            display: none;
+          }
+        </style>
+      </head>
+      <body>
+        <a class="hidden">link1</a>
+        <p></p>
+        <p class="hidden"><a>link2</a></p>
+      </body>
+      </html>"#
+            .to_string();
+        let layout_view = create_layout_view(html);
+
+        let root = layout_view.root();
+        assert!(root.is_some());
+        assert_eq!(
+            LayoutObjectKind::Block,
+            root.clone().expect("root should exist").borrow().kind()
+        );
+        assert_eq!(
+            NodeKind::Element(Element::new("body", Vec::new())),
+            root.clone()
+                .expect("root should exist")
+                .borrow()
+                .node_kind()
+        );
+
+        let p = root.expect("root should exist").borrow().first_child();
+        assert!(p.is_some());
+        assert_eq!(
+            LayoutObjectKind::Block,
+            p.clone().expect("p node should exist").borrow().kind()
+        );
+        assert_eq!(
+            NodeKind::Element(Element::new("p", Vec::new())),
+            p.clone().expect("p node should exist").borrow().node_kind()
+        );
+        assert!(p
+            .clone()
+            .expect("p node should exist")
+            .borrow()
+            .first_child()
+            .is_none());
+        assert!(p
+            .clone()
+            .expect("p node should exist")
+            .borrow()
+            .next_sibling()
+            .is_none());
+    }
 }
