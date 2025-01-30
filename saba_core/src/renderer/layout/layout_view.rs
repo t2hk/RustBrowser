@@ -1,4 +1,5 @@
 use crate::constants::CONTENT_AREA_WIDTH;
+use crate::display_item::DisplayItem;
 use crate::renderer::css::cssom::StyleSheet;
 use crate::renderer::dom::api::get_target_element_node;
 use crate::renderer::dom::node::ElementKind;
@@ -9,6 +10,7 @@ use crate::renderer::layout::layout_object::LayoutObjectKind;
 use crate::renderer::layout::layout_object::LayoutPoint;
 use crate::renderer::layout::layout_object::LayoutSize;
 use alloc::rc::Rc;
+use alloc::vec::Vec;
 use core::cell::RefCell;
 
 /// レイアウトツリーを管理する LayoutView 構造体。
@@ -116,6 +118,28 @@ impl LayoutView {
                 Some(n.borrow().size()),
             );
         }
+    }
+
+    /// 現在のノードを DisplayItem 列挙型のベクタに変換する。
+    /// また、子ノードや兄弟ノードに対して再帰的に呼び出し、各ノードの結果を DisplayItem 列挙型のベクタに extend で結合することで、描画に必要な情報のベクタを作成する。
+    fn paint_node(node: &Option<Rc<RefCell<LayoutObject>>>, display_items: &mut Vec<DisplayItem>) {
+        match node {
+            Some(n) => {
+                display_items.extend(n.borrow_mut().paint());
+                let first_child = n.borrow().first_child();
+                Self::paint_node(&first_child, display_items);
+                let next_sibling = n.borrow().next_sibling();
+                Self::paint_node(&next_sibling, display_items);
+            }
+            None => (),
+        }
+    }
+
+    // paint_node を呼び出し、レイアウトツリーを走査する。
+    pub fn paint(&self) -> Vec<DisplayItem> {
+        let mut display_items = Vec::new();
+        Self::paint_node(&self.root, &mut display_items);
+        display_items
     }
 }
 

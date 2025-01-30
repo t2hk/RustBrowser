@@ -2,6 +2,9 @@ use crate::alloc::string::ToString;
 use crate::constants::CHAR_HEIGHT_WITH_PADDING;
 use crate::constants::CHAR_WIDTH;
 use crate::constants::CONTENT_AREA_WIDTH;
+use crate::constants::WINDOW_PADDING;
+use crate::constants::WINDOW_WIDTH;
+use crate::display_item::DisplayItem;
 use crate::renderer::css::cssom::ComponentValue;
 use crate::renderer::css::cssom::Declaration;
 use crate::renderer::css::cssom::Selector;
@@ -14,6 +17,8 @@ use crate::renderer::layout::computed_style::DisplayType;
 use crate::renderer::layout::computed_style::FontSize;
 use alloc::rc::Rc;
 use alloc::rc::Weak;
+use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
@@ -32,6 +37,34 @@ pub enum LayoutObjectKind {
 pub struct LayoutPoint {
     x: i64,
     y: i64,
+}
+
+/// 要素の幅を超えるテキストの場合、単語の境界であるホワイトスペースで改行する。
+/// 改行位置を見つける関数である。
+fn find_index_for_line_break(line: String, max_index: usize) -> usize {
+    for i in (0..max_index).rev() {
+        if line.chars().collect::<Vec<char>>()[i] == ' ' {
+            return i;
+        }
+    }
+    max_index
+}
+
+/// ウィンドウの大きさによってテキストを指定された幅内に収まるように単語の途中で折り返すことなく、スペースで区切られた部分ごとに分割する処理を行う。
+/// この動作は、CSS の workd-break プロパティが normal の時と同じ動作である。word-break プロパティのデフォルトの挙動は、単語を途中で折り返さない。
+fn split_text(line: String, char_width: i64) -> Vec<String> {
+    let mut result: Vec<String> = vec![];
+    if line.len() as i64 * char_width > (WINDOW_WIDTH + WINDOW_PADDING) {
+        let s = line.split_at(find_index_for_line_break(
+            line.clone(),
+            ((WINDOW_WIDTH + WINDOW_PADDING) / char_width) as usize,
+        ));
+        result.push(s.0.to_string());
+        result.extend(split_text(s.1.trim().to_string(), char_width))
+    } else {
+        result.push(line);
+    }
+    result
 }
 
 impl LayoutPoint {
@@ -410,6 +443,65 @@ impl LayoutObject {
             }
         }
         self.point = point;
+    }
+
+    /// そのノードを DisplayItem に変換する。
+    pub fn paint(&mut self) -> Vec<DisplayItem> {
+        if self.style.display() == DisplayType::DisplayNone {
+            return vec![];
+        }
+
+        match self.kind {
+            // ノードがブロック要素の場合、ノードのスタイル、位置、サイズをそのまま使用して DisplayItem::Rect を作成して返す。
+            LayoutObjectKind::Block => {
+                if let NodeKind::Element(_e) = self.node_kind() {
+                    return vec![DisplayItem::Rect {
+                        style: self.style(),
+                        layout_point: self.point(),
+                        layout_size: self.size(),
+                    }];
+                }
+            }
+            // ノードがインライン要素の場合、本ブラウザでは描画するインライン要素がないため何も行わない。
+            LayoutObjectKind::Inline => {
+                // 本ブラウザでは、描画するインライン要素はない。
+                // <img> タグなどをサポートした場合はこのアームの中で処理する。
+            }
+            // ノードがテキストノードの場合、ノードのサイズを計算したときと同じようにフォントのサイズと1文字の横幅の情報をもとに、改行すべき位置を探す。
+            // テキストが複数行になる場合、複数の DisplayItem::Text オブジェクトを返す。
+            LayoutObjectKind::Text => {
+                if let NodeKind::Text(t) = self.node_kind() {
+                    let mut v = vec![];
+                    let ratio = match self.style.font_size() {
+                        FontSize::Medium => 1,
+                        FontSize::XLarge => 2,
+                        FontSize::XXLarge => 3,
+                    };
+                    let plain_text = t
+                        .replace("\n", " ")
+                        .split(' ')
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let lines = split_text(plain_text, CHAR_WIDTH * ratio);
+                    let mut i = 0;
+                    for line in lines {
+                        let item = DisplayItem::Text {
+                            text: line,
+                            style: self.style(),
+                            layout_point: LayoutPoint::new(
+                                self.point().x(),
+                                self.point().y() + CHAR_HEIGHT_WITH_PADDING * i,
+                            ),
+                        };
+                        v.push(item);
+                        i += 1;
+                    }
+                    return v;
+                }
+            }
+        }
+        vec![]
     }
 }
 
