@@ -4,6 +4,10 @@
 
 extern crate alloc;
 
+use alloc::rc::Rc;
+use core::cell::RefCell;
+use ui_wasabi::app::WasabiUI;
+
 use crate::alloc::string::ToString;
 use net_wasabi::http::HttpClient;
 use noli::prelude::*;
@@ -29,15 +33,26 @@ Data: xx xx xx
 "#;
 
 fn main() -> u64 {
+    // Browser 構造体と WasabiUI 構造体を初期化
     let browser = Browser::new();
-    let response =
-        HttpResponse::new(TEST_HTTP_RESPONSE.to_string()).expect("failed to parse http response");
-    let page = browser.borrow().current_page();
-    // let dom_string = page.borrow_mut().receive_response(response);
-    // for log in dom_string.lines() {
-    //     println!("{}", log);
-    // }
-    page.borrow_mut().receive_response(response);
+    let ui = Rc::new(RefCell::new(WasabiUI::new(browser)));
+
+    match ui.borrow_mut().start() {
+        Ok(_) => {}
+        Err(e) => {
+            println!("browser fails to start {:?}", e);
+            return 1;
+        }
+    };
+
+    // let response =
+    //     HttpResponse::new(TEST_HTTP_RESPONSE.to_string()).expect("failed to parse http response");
+    // let page = browser.borrow().current_page();
+    // // let dom_string = page.borrow_mut().receive_response(response);
+    // // for log in dom_string.lines() {
+    // //     println!("{}", log);
+    // // }
+    // page.borrow_mut().receive_response(response);
 
     0
 
