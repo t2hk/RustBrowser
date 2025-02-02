@@ -120,12 +120,11 @@ impl WasabiUI {
     /// OS が提供する noli ライブラリの Api::get_mouse_cursor_info 関数を使用する。
     /// これは戻り値で マウスクリックの状態とマウスの位置を保持する MouseEvent 構造体を返す。
     fn handle_mouse_input(&mut self) -> Result<(), Error> {
-        if let Some(MouseEvent {
-            button: _button,
-            position,
-        }) = Api::get_mouse_cursor_info()
-        {
+        if let Some(MouseEvent { button, position }) = Api::get_mouse_cursor_info() {
             println!("mouse position {:?}", position);
+            if button.l() || button.c() || button.r() {
+                println!("mouse clicked {:?}", button);
+            }
         }
         Ok(())
     }
