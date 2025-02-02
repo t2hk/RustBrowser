@@ -110,9 +110,11 @@ impl WasabiUI {
 
     /// アプリケーションを実行するための関数
     fn run_app(&mut self) -> Result<(), Error> {
-        // マウスの位置を取得する。
         loop {
+            // マウスの位置を取得する。
             self.handle_mouse_input()?;
+            // キー入力を取得する。
+            self.handle_key_input()?;
         }
     }
 
@@ -125,6 +127,15 @@ impl WasabiUI {
             if button.l() || button.c() || button.r() {
                 println!("mouse clicked {:?}", button);
             }
+        }
+        Ok(())
+    }
+
+    /// 文字を入力する。
+    /// noli の Api::read_key 関数は文字入力に対して1文字を返す。
+    fn handle_key_input(&mut self) -> Result<(), Error> {
+        if let Some(c) = Api::read_key() {
+            println!("input text: {:?}", c);
         }
         Ok(())
     }
