@@ -3,6 +3,10 @@ use alloc::format;
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use noli::error::Result as OsResult;
+use noli::prelude::SystemApi;
+use noli::println;
+use noli::sys::api::MouseEvent;
+use noli::sys::wasabi::Api;
 use noli::window::StringSize;
 use noli::window::Window;
 use saba_core::browser::Browser;
@@ -106,6 +110,23 @@ impl WasabiUI {
 
     /// アプリケーションを実行するための関数
     fn run_app(&mut self) -> Result<(), Error> {
+        // マウスの位置を取得する。
+        loop {
+            self.handle_mouse_input()?;
+        }
+    }
+
+    /// マウスの位置を取得する。
+    /// OS が提供する noli ライブラリの Api::get_mouse_cursor_info 関数を使用する。
+    /// これは戻り値で マウスクリックの状態とマウスの位置を保持する MouseEvent 構造体を返す。
+    fn handle_mouse_input(&mut self) -> Result<(), Error> {
+        if let Some(MouseEvent {
+            button: _button,
+            position,
+        }) = Api::get_mouse_cursor_info()
+        {
+            println!("mouse position {:?}", position);
+        }
         Ok(())
     }
 }
