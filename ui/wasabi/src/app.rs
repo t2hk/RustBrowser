@@ -20,6 +20,7 @@ use saba_core::constants::WINDOW_INIT_Y_POS;
 use saba_core::constants::WINDOW_WIDTH;
 use saba_core::constants::*;
 use saba_core::error::Error;
+use saba_core::http::HttpResponse;
 
 /// WasabiUI 構造体
 /// ウィンドウのインスタンスとブラウザの実装を保持する。
@@ -118,20 +119,26 @@ impl WasabiUI {
     }
 
     /// UI を開始するメソッド
-    pub fn start(&mut self) -> Result<(), Error> {
+    pub fn start(
+        &mut self,
+        handle_url: fn(String) -> Result<HttpResponse, Error>,
+    ) -> Result<(), Error> {
         self.setup()?;
-        self.run_app()?;
+        self.run_app(handle_url)?;
 
         Ok(())
     }
 
     /// アプリケーションを実行するための関数
-    fn run_app(&mut self) -> Result<(), Error> {
+    fn run_app(
+        &mut self,
+        handle_url: fn(String) -> Result<HttpResponse, Error>,
+    ) -> Result<(), Error> {
         loop {
             // マウスの位置を取得する。
             self.handle_mouse_input()?;
             // キー入力を取得する。
-            self.handle_key_input()?;
+            self.handle_key_input(handle_url)?;
         }
     }
 
@@ -185,7 +192,10 @@ impl WasabiUI {
 
     /// 文字を入力する。
     /// noli の Api::read_key 関数は文字入力に対して1文字を返す。
-    fn handle_key_input(&mut self) -> Result<(), Error> {
+    fn handle_key_input(
+        &mut self,
+        handle_url: fn(String) -> Result<HttpResponse, Error>,
+    ) -> Result<(), Error> {
         match self.input_mode {
             InputMode::Normal => {
                 // InputMode が Normal の時、キー入力を無視する。
@@ -193,7 +203,12 @@ impl WasabiUI {
             }
             InputMode::Editing => {
                 if let Some(c) = Api::read_key() {
-                    if c == 0x7F as char || c == 0x08 as char {
+                    if c == 0x0A as char {
+                        // Enter キーが押された場合、ナビゲーションを開始する。
+                        self.start_navigation(handle_url, self.input_url.clone())?;
+                        self.input_url = String::new();
+                        self.input_mode = InputMode::Normal;
+                    } else if c == 0x7F as char || c == 0x08 as char {
                         // デリートキーまたはバックスペースキーが押された場合、最後の文字を削除する。
                         // input_url の文字列を変更した後は update_address_bar を呼んで描画する。
                         self.input_url.pop();
@@ -279,6 +294,50 @@ impl WasabiUI {
             )
             .expect("failed to create a rect for the address bar"),
         );
+
+        Ok(())
+    }
+
+    /// コンテンツエリアをリセットしてから URL に対してナビゲーションを行う handle_url 関数を呼び出す。
+    fn start_navigation(
+        &mut self,
+        handle_url: fn(String) -> Result<HttpResponse, Error>,
+        destination: String,
+    ) -> Result<(), Error> {
+        self.clear_content_area()?;
+
+        match handle_url(destination) {
+            Ok(response) => {
+                let page = self.browser.borrow().current_page();
+                page.borrow_mut().receive_response(response);
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+
+    /// コンテンツエリアを白く塗りつぶす。
+    /// コンテンツエリアとは、ツールバーとタイトルバー以外のウィンドウが対象である。
+    /// ここではツールバーよりも下の HTML で描画可能な範囲である。
+    fn clear_content_area(&mut self) -> Result<(), Error> {
+        if self
+            .window
+            .fill_rect(
+                WHITE,
+                0,
+                TOOLBAR_HEIGHT + 2,
+                CONTENT_AREA_WIDTH,
+                CONTENT_AREA_HEIGHT - 2,
+            )
+            .is_err()
+        {
+            return Err(Error::InvalidUI(
+                "failed to clear a content area".to_string(),
+            ));
+        }
+        self.window.flush();
 
         Ok(())
     }
