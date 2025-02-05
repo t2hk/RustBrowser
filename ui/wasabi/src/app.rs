@@ -19,8 +19,11 @@ use saba_core::constants::WINDOW_INIT_X_POS;
 use saba_core::constants::WINDOW_INIT_Y_POS;
 use saba_core::constants::WINDOW_WIDTH;
 use saba_core::constants::*;
+use saba_core::display_item::DisplayItem;
 use saba_core::error::Error;
 use saba_core::http::HttpResponse;
+use saba_core::renderer::layout::computed_style::FontSize;
+use saba_core::renderer::layout::computed_style::TextDecoration;
 
 /// WasabiUI 構造体
 /// ウィンドウのインスタンスとブラウザの実装を保持する。
@@ -204,6 +207,7 @@ impl WasabiUI {
             InputMode::Editing => {
                 if let Some(c) = Api::read_key() {
                     if c == 0x0A as char {
+                        println!("{:?}", self.input_url);
                         // Enter キーが押された場合、ナビゲーションを開始する。
                         self.start_navigation(handle_url, self.input_url.clone())?;
                         self.input_url = String::new();
@@ -315,6 +319,9 @@ impl WasabiUI {
                 return Err(e);
             }
         }
+
+        self.update_ui()?;
+
         Ok(())
     }
 
@@ -340,5 +347,73 @@ impl WasabiUI {
         self.window.flush();
 
         Ok(())
+    }
+
+    /// Browser 構造体から取得した DisplayItem 列挙型の配列を１つずつ描画する。
+    fn update_ui(&mut self) -> Result<(), Error> {
+        let display_items = self
+            .browser
+            .borrow()
+            .current_page()
+            .borrow()
+            .display_items();
+
+        for item in display_items {
+            // println!("{:?}", item);
+            match item {
+                DisplayItem::Text {
+                    text,
+                    style,
+                    layout_point,
+                } => {
+                    if self
+                        .window
+                        .draw_string(
+                            style.color().code_u32(),
+                            layout_point.x() + WINDOW_PADDING,
+                            layout_point.y() + WINDOW_PADDING + TOOLBAR_HEIGHT,
+                            &text,
+                            convert_font_size(style.font_size()),
+                            style.text_decoration() == TextDecoration::Underline,
+                        )
+                        .is_err()
+                    {
+                        return Err(Error::InvalidUI("failed to draw a string".to_string()));
+                    }
+                }
+                DisplayItem::Rect {
+                    style,
+                    layout_point,
+                    layout_size,
+                } => {
+                    if self
+                        .window
+                        .fill_rect(
+                            style.background_color().code_u32(),
+                            layout_point.x() + WINDOW_PADDING,
+                            layout_point.y() + WINDOW_PADDING + TOOLBAR_HEIGHT,
+                            layout_size.width(),
+                            layout_size.height(),
+                        )
+                        .is_err()
+                    {
+                        return Err(Error::InvalidUI("failed to draw a string".to_string()));
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.window.flush();
+        Ok(())
+    }
+}
+
+/// OS のライブラリで使用している文字の大きさを表す列挙型 (StringSize) と、ブラウザで使用している文字の大きさを表す列挙型 (FontSize) は違う型である。
+/// 文字を表す型を変化する。
+fn convert_font_size(size: FontSize) -> StringSize {
+    match size {
+        FontSize::Medium => StringSize::Medium,
+        FontSize::XLarge => StringSize::Large,
+        FontSize::XXLarge => StringSize::XLarge,
     }
 }

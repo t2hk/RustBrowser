@@ -419,7 +419,7 @@ impl LayoutObject {
                     point.set_y(pos.y() + size.height());
                 } else {
                     // 兄弟ノードが存在しない場合、親ノードの Y 座標をセットする。
-                    point.set_y(parent_point.x());
+                    point.set_y(parent_point.y());
                 }
                 // 新しい行から始まるため、X 座標は常に親要素の X 座標と同じである。
                 point.set_x(parent_point.x());
