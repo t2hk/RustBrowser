@@ -138,17 +138,20 @@ impl WasabiUI {
         handle_url: fn(String) -> Result<HttpResponse, Error>,
     ) -> Result<(), Error> {
         loop {
-            // マウスの位置を取得する。
-            self.handle_mouse_input()?;
             // キー入力を取得する。
             self.handle_key_input(handle_url)?;
+            // マウスの位置を取得する。
+            self.handle_mouse_input(handle_url)?;
         }
     }
 
     /// マウスの位置を取得する。
     /// OS が提供する noli ライブラリの Api::get_mouse_cursor_info 関数を使用する。
     /// これは戻り値で マウスクリックの状態とマウスの位置を保持する MouseEvent 構造体を返す。
-    fn handle_mouse_input(&mut self) -> Result<(), Error> {
+    fn handle_mouse_input(
+        &mut self,
+        handle_url: fn(String) -> Result<HttpResponse, Error>,
+    ) -> Result<(), Error> {
         if let Some(MouseEvent { button, position }) = Api::get_mouse_cursor_info() {
             // マウスの位置にマウスカーソルを表示する。
             self.window.flush_area(self.cursor.rect());
@@ -184,6 +187,20 @@ impl WasabiUI {
                     return Ok(());
                 }
                 self.input_mode = InputMode::Normal;
+
+                // リンクである <a> タグをクリックした場合の挙動
+                let position_in_content_area = (
+                    relative_pos.0,
+                    relative_pos.1 - TITLE_BAR_HEIGHT - TOOLBAR_HEIGHT,
+                );
+                let page = self.browser.borrow().current_page();
+                let next_destination = page.borrow_mut().clicked(position_in_content_area);
+
+                if let Some(url) = next_destination {
+                    self.input_url = url.clone();
+                    self.update_address_bar()?;
+                    self.start_navigation(handle_url, url)?;
+                }
             }
             // println!("mouse position {:?}", position);
             // if button.l() || button.c() || button.r() {

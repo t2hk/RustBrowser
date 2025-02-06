@@ -187,6 +187,17 @@ impl Element {
     pub fn attributes(&self) -> Vec<Attribute> {
         self.attributes.clone()
     }
+
+    /// DOM ツリーのノードの指定した属性の値を取得する。
+    /// 指定した属性が存在しない場合、None を返す。
+    pub fn get_attribute(&self, name: &str) -> Option<String> {
+        for attr in &self.attributes {
+            if attr.name() == name {
+                return Some(attr.value());
+            }
+        }
+        None
+    }
 }
 
 /// 要素の種類を表す列挙型。

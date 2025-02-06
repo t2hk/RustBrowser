@@ -1,4 +1,4 @@
-use crate::alloc::string::ToString;
+// use crate::alloc::string::ToString;
 use crate::browser::Browser;
 use crate::display_item::DisplayItem;
 use crate::http::HttpResponse;
@@ -6,11 +6,13 @@ use crate::renderer::css::cssom::CssParser;
 use crate::renderer::css::cssom::StyleSheet;
 use crate::renderer::css::token::CssTokenizer;
 use crate::renderer::dom::api::get_style_content;
+use crate::renderer::dom::node::ElementKind;
+use crate::renderer::dom::node::NodeKind;
 use crate::renderer::dom::node::Window;
 use crate::renderer::html::parser::HtmlParser;
 use crate::renderer::html::token::HtmlTokenizer;
 use crate::renderer::layout::layout_view::LayoutView;
-use crate::utils::convert_dom_to_string;
+// use crate::utils::convert_dom_to_string;
 use alloc::rc::Rc;
 use alloc::rc::Weak;
 use alloc::string::String;
@@ -109,5 +111,24 @@ impl Page {
     /// DisplayItem 構造体のベクタをクリアする。
     pub fn clear_display_items(&mut self) {
         self.display_items = Vec::new();
+    }
+
+    /// マウスの位置から度のノードがクリックされたか取得し、そのノードの親が href 属性を持ってる場合、その値を返す。
+    pub fn clicked(&self, position: (i64, i64)) -> Option<String> {
+        let view = match &self.layout_view {
+            Some(v) => v,
+            None => return None,
+        };
+
+        if let Some(n) = view.find_node_by_position(position) {
+            if let Some(parent) = n.borrow().parent().upgrade() {
+                if let NodeKind::Element(e) = parent.borrow().node_kind() {
+                    if e.kind() == ElementKind::A {
+                        return e.get_attribute("href");
+                    }
+                }
+            }
+        }
+        None
     }
 }
