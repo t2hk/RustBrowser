@@ -37,6 +37,26 @@ pub enum Node {
     Identifier(String),
     /// 文字列を表す。
     StringLiteral(String),
+
+    /// {} で囲まれるブロックを表す。
+    BlockStatement {
+        body: Vec<Option<Rc<Node>>>,
+    },
+    /// return の予約語から始まる文を表す。
+    ReturnStatement {
+        argument: Option<Rc<Node>>,
+    },
+    /// function の予約語から始まる文を表す。
+    FunctionDeclaration {
+        id: Option<Rc<Node>>,
+        params: Vec<Option<Rc<Node>>>,
+        body: Option<Rc<Node>>,
+    },
+    /// 関数呼び出しを表す。
+    CallExpression {
+        callee: Option<Rc<Node>>,
+        arguments: Vec<Option<Rc<Node>>>,
+    },
 }
 
 impl Node {
@@ -96,6 +116,22 @@ impl Node {
 
     pub fn new_string_literal(value: String) -> Option<Rc<Self>> {
         Some(Rc::new(Node::StringLiteral(value)))
+    }
+
+    pub fn new_block_statement(body: Vec<Option<Rc<Self>>>) -> Option<Rc<Self>> {
+        Some(Rc::new(Node::BlockStatement { body }))
+    }
+
+    pub fn new_return_statement(argument: Option<Rc<Self>>) -> Option<Rc<Self>> {
+        Some(Rc::new(Node::ReturnStatement { argument }))
+    }
+
+    pub fn new_function_declaration(
+        id: Option<Rc<Self>>,
+        params: Vec<Option<Rc<Self>>>,
+        body: Option<Rc<Self>>,
+    ) -> Option<Rc<Self>> {
+        Some(Rc::new(Node::FunctionDeclaration { id, params, body }))
     }
 }
 
@@ -242,14 +278,25 @@ impl JsParser {
     }
 
     /// BNF の SourceElement を解釈する。
-    /// SourceElement ::= Statement
+    /// SourceElement ::= FunctionDeclaration | Statement
     fn source_element(&mut self) -> Option<Rc<Node>> {
-        match self.t.peek() {
+        let t = match self.t.peek() {
             Some(t) => t,
             None => return None,
         };
 
-        self.statement()
+        match t {
+            Token::Keyword(keyword) => {
+                // function キーワードを消費する。
+                if keyword == "function" {
+                    assert!(self.t.next().is_some());
+                    self.function_declaration()
+                } else {
+                    self.statement()
+                }
+            }
+            _ => self.statement(),
+        }
     }
 
     /// VariableDeclaration の解釈
@@ -296,6 +343,54 @@ impl JsParser {
                 _ => None,
             },
             _ => None,
+        }
+    }
+
+    /// FunctionDeclaration の解釈
+    /// BNF は以下の通り。
+    /// FunctionDeclaration ::= "function" Identifier ( "(" ( FormalParameterList )? ")" ) FunctionBody
+    fn function_declaration(&mut self) -> Option<Rc<Node>> {
+        let id = self.identifier();
+        let params = self.parameter_list();
+        Node::new_function_declaration(id, params, self.function_body())
+    }
+
+    /// FormalParameterList の解釈
+    /// 丸括弧 ( を消費し、閉じ括弧 ) に到達するまでカンマ , で区切られた変数をパラメータに追加する。
+    /// BNF は以下の通り。
+    /// FormalParameterList ::= Identifier ( "." Identifier )*
+    fn parameter_list(&mut self) -> Vec<Option<Rc<Node>>> {
+        let mut params = Vec::new();
+
+        // '(' を消費する。もし次のトークンが '(' ではない場合、エラーになる。
+        match self.t.next() {
+            Some(t) => match t {
+                Token::Punctuator(c) => assert!(c == '('),
+                _ => unimplemented!("function should have '(' but got {:?}", t),
+            },
+            None => unimplemented!("function should have '(' but got None"),
+        }
+
+        loop {
+          // ')' に到達するまで、params に仮引数となる変数を追加する。
+          match self.t.peek() {
+            Some(t) => match t {
+              Token::Punctuator(c)=> {
+                if c == &')' {
+                  // ')' を消費する。
+                  assert!(self.t.next().is_some());
+                  return params;
+                }
+                if c == &',' {
+                  // ',' を消費する。
+                  assert!(self.t.next().is_some());
+                }
+              }
+              _ => {
+                params.push(self.identifier());
+              }
+          },
+          None => return params,
         }
     }
 }
