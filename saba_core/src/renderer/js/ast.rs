@@ -133,6 +133,13 @@ impl Node {
     ) -> Option<Rc<Self>> {
         Some(Rc::new(Node::FunctionDeclaration { id, params, body }))
     }
+
+    pub fn new_call_expression(
+        callee: Option<Rc<Self>>,
+        arguments: Vec<Option<Rc<Self>>>,
+    ) -> Option<Rc<Self>> {
+        Some(Rc::new(Node::CallExpression { callee, arguments }))
+    }
 }
 
 /// AST を構築する JsParser 構造体
@@ -167,8 +174,8 @@ impl JsParser {
         }
     }
 
-    /// BNF の Statement として ExpressionStatement VariableStatement を解釈する。
-    /// Statement ::= ExpressionStatement | VariableStatement
+    /// BNF の Statement として ExpressionStatement、VariableStatement、ReturnStatement を解釈する。
+    /// Statement ::= ExpressionStatement | VariableStatement | ReturnStatemet
     /// ExpressionStatement ::= AssignmentExpression ( ";" )?
     fn statement(&mut self) -> Option<Rc<Node>> {
         let t = match self.t.peek() {
@@ -182,6 +189,10 @@ impl JsParser {
                     // "var" の予約語を消費する。
                     assert!(self.t.next().is_some());
                     self.variable_declaration()
+                } else if keyword == "return" {
+                    // "return" の予約語を消費する。
+                    assert!(self.t.next().is_some());
+                    Node::new_return_statement(self.assignment_expression())
                 } else {
                     None
                 }
@@ -247,15 +258,49 @@ impl JsParser {
     }
 
     /// BNF の LeftHandSideExpression を解釈する。
-    /// LeftHandSideExpression ::= MemberExpression
+    /// LeftHandSideExpression ::= CallExpression | MemberExpression
     fn left_hand_side_expression(&mut self) -> Option<Rc<Node>> {
-        self.member_expression()
+        let expr = self.member_expression();
+
+        let t = match self.t.peek() {
+            Some(token) => token,
+            None => return expr,
+        };
+
+        match t {
+            Token::Punctuator(c) => {
+                if c == &'(' {
+                    // '(' を消費する。
+                    assert!(self.t.next().is_some());
+                    return Node::new_call_expression(expr, self.arguments());
+                }
+                expr
+            }
+            _ => expr,
+        }
     }
 
     /// BNF の MemberExpression を解釈する。
-    /// MemberExpression ::= PrimaryExpression
+    /// MemberExpression ::= PrimaryExpression ( "." Identifier )*
     fn member_expression(&mut self) -> Option<Rc<Node>> {
-        self.primary_expression()
+        let expr = self.primary_expression();
+
+        let t = match self.t.peek() {
+            Some(token) => token,
+            None => return expr,
+        };
+
+        match t {
+            Token::Punctuator(c) => {
+                if c == &'.' {
+                    // '.' を消費する。
+                    assert!(self.t.next().is_some());
+                    return Node::new_member_expression(expr, self.identifier());
+                }
+                expr
+            }
+            _ => expr,
+        }
     }
 
     /// BNF の PrimaryExpression を解釈する。
@@ -372,29 +417,95 @@ impl JsParser {
         }
 
         loop {
-          // ')' に到達するまで、params に仮引数となる変数を追加する。
-          match self.t.peek() {
+            // ')' に到達するまで、params に仮引数となる変数を追加する。
+            match self.t.peek() {
+                Some(t) => match t {
+                    Token::Punctuator(c) => {
+                        if c == &')' {
+                            // ')' を消費する。
+                            assert!(self.t.next().is_some());
+                            return params;
+                        }
+                        if c == &',' {
+                            // ',' を消費する。
+                            assert!(self.t.next().is_some());
+                        }
+                    }
+                    _ => {
+                        params.push(self.identifier());
+                    }
+                },
+                None => return params,
+            }
+        }
+    }
+
+    /// FunctionBody の解釈
+    /// 関数のボディを表す FunctionBody を解釈する。
+    /// 開き波括弧 { を消費し、閉じ波括弧 } が現れるまで関数の文として解釈する。
+    /// BNFは以下の通り。
+    /// FunctionBody ::= "{" ( SourceElements )? "}"
+    fn function_body(&mut self) -> Option<Rc<Node>> {
+        match self.t.next() {
             Some(t) => match t {
-              Token::Punctuator(c)=> {
-                if c == &')' {
-                  // ')' を消費する。
-                  assert!(self.t.next().is_some());
-                  return params;
-                }
-                if c == &',' {
-                  // ',' を消費する。
-                  assert!(self.t.next().is_some());
-                }
-              }
-              _ => {
-                params.push(self.identifier());
-              }
-          },
-          None => return params,
+                Token::Punctuator(c) => assert!(c == '{'),
+                _ => unimplemented!("function should have open curly blacket but got {:?}", t),
+            },
+            None => unimplemented!("function should have open curly blacket but got None"),
+        }
+
+        let mut body = Vec::new();
+
+        loop {
+            // } に到達するまで、関数内のコードとして解釈する。
+            match self.t.peek() {
+                Some(t) => match t {
+                    Token::Punctuator(c) => {
+                        // } を消費し、BlockStatement ノードを返す。
+                        if c == &'}' {
+                            assert!(self.t.next().is_some());
+                            return Node::new_block_statement(body);
+                        }
+                    }
+                    _ => {}
+                },
+                None => {}
+            }
+            body.push(self.source_element());
+        }
+    }
+
+    /// Arguments の解釈
+    /// Arguments は関数呼び出しに必要な引数を表す。
+    /// 閉じ丸括弧 ) が現れるまで、解釈した値を arguments 変数に追加する。閉じ丸括弧 ) が現れたら、今まで解釈した値のベクタを返す。
+    /// BNF は以下の通り。
+    /// Arguments ::= "(" ( ArgumentList )? ")"
+    /// ArgumentList ::= AssiginmentExpression ( "," AssignmentExpression )*
+    fn arguments(&mut self) -> Vec<Option<Rc<Node>>> {
+        let mut arguments = Vec::new();
+
+        loop {
+            // ) に到達するまで、解釈した値を arguments ベクタに追加する。
+            match self.t.peek() {
+                Some(t) => match t {
+                    Token::Punctuator(c) => {
+                        // ) を消費する。
+                        if c == &')' {
+                            assert!(self.t.next().is_some());
+                            return arguments;
+                        }
+                        // , を消費する。
+                        if c == &',' {
+                            assert!(self.t.next().is_some());
+                        }
+                    }
+                    _ => arguments.push(self.assignment_expression()),
+                },
+                None => return arguments,
+            }
         }
     }
 }
-
 /// AST のルートノードとなる Program 構造体
 /// フィールドに BNF の SourceElements を表す Node のベクタを持つ。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -519,6 +630,61 @@ mod tests {
                 })),
             }))]
             .to_vec(),
+        }));
+        expected.set_body(body);
+        assert_eq!(expected, parser.parse_ast());
+    }
+
+    /// 関数定義のテスト
+    /// foo 関数内で return 文により数値を返却している。
+    #[test]
+    fn test_define_function() {
+        let input = "function foo() { return 42; }".to_string();
+        let lexer = JsLexer::new(input);
+        let mut parser = JsParser::new(lexer);
+        let mut expected = Program::new();
+        let mut body = Vec::new();
+        body.push(Rc::new(Node::FunctionDeclaration {
+            id: Some(Rc::new(Node::Identifier("foo".to_string()))),
+            params: [].to_vec(),
+            body: Some(Rc::new(Node::BlockStatement {
+                body: [Some(Rc::new(Node::ReturnStatement {
+                    argument: Some(Rc::new(Node::NumericLiteral(42))),
+                }))]
+                .to_vec(),
+            })),
+        }));
+        expected.set_body(body);
+        assert_eq!(expected, parser.parse_ast());
+    }
+
+    /// 引数付き関数定義のテスト
+    /// 引数を持つ関数の定義のテストを行う。
+    /// 関数 foo は 2つの引数 a と b を持ち、それらの加算結果を返す。
+    #[test]
+    fn test_define_function_with_args() {
+        let input = "function foo (a, b) { return a + b; }".to_string();
+        let lexer = JsLexer::new(input);
+        let mut parser = JsParser::new(lexer);
+        let mut expected = Program::new();
+        let mut body = Vec::new();
+        body.push(Rc::new(Node::FunctionDeclaration {
+            id: Some(Rc::new(Node::Identifier("foo".to_string()))),
+            params: [
+                Some(Rc::new(Node::Identifier("a".to_string()))),
+                Some(Rc::new(Node::Identifier("b".to_string()))),
+            ]
+            .to_vec(),
+            body: Some(Rc::new(Node::BlockStatement {
+                body: [Some(Rc::new(Node::ReturnStatement {
+                    argument: Some(Rc::new(Node::AdditiveExpression {
+                        operator: '+',
+                        left: Some(Rc::new(Node::Identifier("a".to_string()))),
+                        right: Some(Rc::new(Node::Identifier("b".to_string()))),
+                    })),
+                }))]
+                .to_vec(),
+            })),
         }));
         expected.set_body(body);
         assert_eq!(expected, parser.parse_ast());
