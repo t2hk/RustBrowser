@@ -1,3 +1,6 @@
+use crate::renderer::dom::api::get_element_by_id;
+use crate::renderer::dom::node::Node as DomNode;
+use crate::renderer::dom::node::NodeKind as DomNodeKind;
 use crate::renderer::js::ast::Node;
 use crate::renderer::js::ast::Program;
 use alloc::format;
@@ -85,13 +88,15 @@ impl Function {
 /// ランタイム用の構造体
 #[derive(Debug, Clone)]
 pub struct JsRuntime {
-    functions: Vec<Function>,
+    dom_root: Rc<RefCell<DomNode>>,
     env: Rc<RefCell<Environment>>,
+    functions: Vec<Function>,
 }
 
 impl JsRuntime {
-    pub fn new() -> Self {
+    pub fn new(dom_root: Rc<RefCell<DomNode>>) -> Self {
         Self {
+            dom_root,
             functions: Vec::new(),
             env: Rc::new(RefCell::new(Environment::new(None))),
         }
@@ -159,12 +164,21 @@ impl JsRuntime {
                 }
                 None
             }
-            Node::MemberExpression {
-                object: _,
-                property: _,
-            } => {
-                // 後ほど実装
-                None
+            Node::MemberExpression { object, property } => {
+                let object_value = match self.eval(object, env.clone()) {
+                    Some(value) => value,
+                    None => return None,
+                };
+                let property_value = match self.eval(property, env.clone()) {
+                    Some(value) => value,
+                    None => return Some(object_value),
+                };
+
+                // document.getElementById は "document.getElementById" という1つの文字列として扱う。
+                // このメソッドの呼び出しは、"document.getElementById" という名前の関数の呼び出しとなる。
+                return Some(
+                    object_value + RuntimeValue::StringLiteral(".".to_string()) + property_value,
+                );
             }
             Node::NumericLiteral(value) => Some(RuntimeValue::Number(*value)),
             Node::VariableDeclaration { declarations } => {
@@ -256,6 +270,44 @@ impl JsRuntime {
             } //_ => todo!(),
         }
     }
+
+    /// ブラウザがサポートするブラウザ API を呼ぶ。
+    /// 引数:
+    ///   * 関数名 (func)
+    ///   * 引数 (arguments)
+    ///   * スコープ (env)
+    /// 戻り値:
+    ///   * (bool, Option<RuntimeValue>) タプル
+    ///     * bool: ブラウザ API が呼ばれたかどうか
+    ///     * Option<RuntimeValue>: ブラウザ API の呼び出しによって得られた結果
+    fn call_browser_api(
+        &mut self,
+        func: &RuntimeValue,
+        arguments: &[Option<Rc<Node>>],
+        env: Rc<RefCell<Environment>>,
+    ) -> (bool, Option<RuntimeValue>) {
+        // 関数名が document.getElementById の場合、まず1つ目の引数を解釈する。この値は ID 名を表す文字列のはずである。
+        if func == &RuntimeValue::StringLiteral("document.getElementById".to_string()) {
+            let arg = match self.eval(&arguments[0], env.clone()) {
+                Some(a) => a,
+                None => return (true, None),
+            };
+            // ID 名を使用して DOM ツリーから特定の要素を取得する。
+            let target = match get_element_by_id(Some(self.dom_root.clone()), &arg.to_string()) {
+                Some(n) => n,
+                None => return (true, None),
+            };
+            // DOM ツリーのノードを表す HtmlElement を返す。
+            return (
+                true,
+                Some(RuntimeValue::HtmlElement {
+                    object: target,
+                    property: None,
+                }),
+            );
+        }
+        (false, None)
+    }
 }
 
 /// RuntimeValue 列挙型
@@ -265,6 +317,10 @@ pub enum RuntimeValue {
     /// https://262.ecma-international.org/#sec-numeric-types
     Number(u64),
     StringLiteral(String),
+    HtmlElement {
+        object: Rc<RefCell<DomNode>>,
+        property: Option<String>,
+    },
 }
 
 /// Add トレイトの実装
@@ -298,6 +354,12 @@ impl Display for RuntimeValue {
         let s = match self {
             RuntimeValue::Number(value) => format!("{}", value),
             RuntimeValue::StringLiteral(value) => value.to_string(),
+            RuntimeValue::HtmlElement {
+                object,
+                property: _,
+            } => {
+                format!("HtmlElement: {:?}", object)
+            }
         };
         write!(f, "{}", s)
     }
@@ -313,11 +375,12 @@ mod tests {
     /// 評価結果として数値 (RuntimeValue::Number) が返るはずである。
     #[test]
     fn test_num() {
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
         let input = "42".to_string();
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new();
+        let mut runtime = JsRuntime::new(dom);
         let expected = [Some(RuntimeValue::Number(42))];
         let mut i = 0;
 
@@ -331,11 +394,12 @@ mod tests {
     /// 足し算のテスト
     #[test]
     fn test_add_nums() {
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
         let input = "1 + 2".to_string();
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new();
+        let mut runtime = JsRuntime::new(dom);
         let expected = [Some(RuntimeValue::Number(3))];
         let mut i = 0;
 
@@ -349,11 +413,12 @@ mod tests {
     /// 引き算のテスト
     #[test]
     fn test_sub_nums() {
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
         let input = "2 - 1".to_string();
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new();
+        let mut runtime = JsRuntime::new(dom);
         let expected = [Some(RuntimeValue::Number(1))];
         let mut i = 0;
 
@@ -369,11 +434,12 @@ mod tests {
     /// Program の body に含まれる文を評価すると、None が返るはずである(変数の定義式自体は値を返さない)。
     #[test]
     fn test_assign_variable() {
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
         let input = "var foo=42;".to_string();
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new();
+        let mut runtime = JsRuntime::new(dom);
         let expected = [None];
         let mut i = 0;
 
@@ -389,11 +455,12 @@ mod tests {
     /// Program の body に含まれる文を評価すると、最初の文は None, 次の文は 43 の値を含む RuntimeValue になるはずである。
     #[test]
     fn test_add_variable_and_num() {
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
         let input = "var foo=42; foo+1".to_string();
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new();
+        let mut runtime = JsRuntime::new(dom);
         let expected = [None, Some(RuntimeValue::Number(43))];
         let mut i = 0;
 
@@ -409,11 +476,12 @@ mod tests {
     /// Program の body に含まれる文を評価すると、最初の文は None, 次の文は None, 最後は 1 の値を含む RuntimeValue になるはずである。
     #[test]
     fn test_reassign_variable() {
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
         let input = "var foo=42; foo=1; foo".to_string();
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new();
+        let mut runtime = JsRuntime::new(dom);
         let expected = [None, None, Some(RuntimeValue::Number(1))];
         let mut i = 0;
 
@@ -427,11 +495,12 @@ mod tests {
     /// 関数定義、呼び出しのテスト
     #[test]
     fn test_add_function_and_num() {
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
         let input = "function foo() { return 42; } foo()+1".to_string();
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new();
+        let mut runtime = JsRuntime::new(dom);
         let expected = [None, Some(RuntimeValue::Number(43))];
         let mut i = 0;
 
@@ -445,11 +514,12 @@ mod tests {
     /// 引数付き関数定義、呼び出しのテスト
     #[test]
     fn test_define_function_with_args() {
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
         let input = "function foo(a, b) { return a + b; } foo(1, 2) + 3;".to_string();
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new();
+        let mut runtime = JsRuntime::new(dom);
         let expected = [None, Some(RuntimeValue::Number(6))];
         let mut i = 0;
 
@@ -463,11 +533,12 @@ mod tests {
     /// ローカル変数のテスト
     #[test]
     fn test_local_variable() {
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
         let input = "var a=42; function foo() { var a=1; return a;} foo() + a".to_string();
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new();
+        let mut runtime = JsRuntime::new(dom);
         let expected = [None, None, Some(RuntimeValue::Number(43))];
         let mut i = 0;
 
