@@ -33,6 +33,30 @@ rustup show
 apt install qemu-system
 ```
 
+# 実行方法
+* Python でローカル HTML サーバを実行する。
+
+```
+python3 -m http.servver 8000
+```
+
+* run_on_wasabi.sh スクリプトを実行して OS を起動させる。
+
+```
+./run_on_wasabi.sh
+```
+
+* OS 上でブラウザを起動する。
+```
+rustbrowser
+```
+
+* Rust で実装したブラウザが起動するので、ツールバーに URL を入力する。
+
+  * ローカル HTTP サーバの場合、http://host.test:8000/test.html
+
+  * test.html の "original text" という文字列が表示されず、代わりに Anser? 1 + 2 = 3" という文字列が表示されることを確認する。
+
 # 第２章 URL の分解
 URL のスキーマ、ホスト、ポート、パス、クエリパラメータを構造体で表現する。
 文字列 URL をパースして URL 構造体を組み立てる。
@@ -76,4 +100,5 @@ python3 -m http.server 8000
 * HTML などソースコードを1文字ずつ処理して、意味のある最小単位のトークンに分割する。
 * トークンに分割するアルゴリズムは HTML Living Starndard で定められており、ステートマシンで表現されている。
   https://html.spec.whatwg.org/multipage/parsing.html#tokenization
+
 

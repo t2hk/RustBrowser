@@ -162,6 +162,27 @@ impl JsRuntime {
                         return None;
                     }
                 }
+
+                // もし左辺の値が DOM ツリーのノードを表す HtmlElement ならば DOM ツリーを更新する。
+                if let Some(RuntimeValue::HtmlElement { object, property }) =
+                    self.eval(left, env.clone())
+                {
+                    let right_value = match self.eval(right, env.clone()) {
+                        Some(value) => value,
+                        None => return None,
+                    };
+
+                    if let Some(p) = property {
+                        // target.textContent = "foobar"; のようにノードのテキストを変更する。
+                        if p == "textContent" {
+                            object
+                                .borrow_mut()
+                                .set_first_child(Some(Rc::new(RefCell::new(DomNode::new(
+                                    DomNodeKind::Text(right_value.to_string()),
+                                )))));
+                        }
+                    }
+                }
                 None
             }
             Node::MemberExpression { object, property } => {
@@ -173,6 +194,16 @@ impl JsRuntime {
                     Some(value) => value,
                     None => return Some(object_value),
                 };
+
+                // もしオブジェクトが DOM ノードの場合、HtmlElement の property を更新する。
+                if let RuntimeValue::HtmlElement { object, property } = object_value {
+                    assert!(property.is_none());
+                    // HtmlElement の property に property_value の文字列をセットする。
+                    return Some(RuntimeValue::HtmlElement {
+                        object,
+                        property: Some(property_value.to_string()),
+                    });
+                }
 
                 // document.getElementById は "document.getElementById" という1つの文字列として扱う。
                 // このメソッドの呼び出しは、"document.getElementById" という名前の関数の呼び出しとなる。
@@ -236,6 +267,12 @@ impl JsRuntime {
                     Some(value) => value,
                     None => return None,
                 };
+
+                // ブラウザ API を呼び出している場合、ユーザが定義した関数は実行しない。
+                let api_result = self.call_browser_api(&callee_value, arguments, new_env.clone());
+                if api_result.0 {
+                    return api_result.1;
+                }
 
                 // 既に定義されている関数を探す。
                 // FunctionDeclaration ノードの解釈時に追加した関数の中から探す。
